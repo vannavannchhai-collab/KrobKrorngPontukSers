@@ -207,7 +207,6 @@ router.put(
       "max_score",
       "attendance_absent_limit",
       "locale",
-      "allow_registration",
     ];
     for (const key of simpleKeys) {
       if (b[key] !== undefined) setSetting(key, String(b[key]));

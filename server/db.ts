@@ -206,7 +206,6 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   ]),
   locale: "km-KH",
   attendance_absent_limit: "20",
-  allow_registration: "1",
 };
 
 /** Default assessment types — system configuration (not demo data). */

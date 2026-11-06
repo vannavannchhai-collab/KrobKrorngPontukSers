@@ -45,7 +45,6 @@ export default function SettingsPage() {
     director_name: "",
     motto: "",
   });
-  const [allowReg, setAllowReg] = useState(true);
   const [grading, setGrading] = useState({
     pass_mark: "50",
     max_score: "100",
@@ -66,7 +65,6 @@ export default function SettingsPage() {
       director_name: data.settings.director_name ?? "",
       motto: data.settings.motto ?? "",
     });
-    setAllowReg((data.settings.allow_registration ?? "1") !== "0");
     setGrading({
       pass_mark: data.settings.pass_mark ?? "50",
       max_score: data.settings.max_score ?? "100",
@@ -85,7 +83,6 @@ export default function SettingsPage() {
           pass_mark: Number(grading.pass_mark),
           max_score: Number(grading.max_score),
           attendance_absent_limit: Number(grading.attendance_absent_limit),
-          allow_registration: allowReg ? "1" : "0",
           grade_scale: grading.scale,
           scoreTypes: grading.types.map((t) => ({ id: t.id, weight: t.weight })),
         },
@@ -189,25 +186,6 @@ export default function SettingsPage() {
               <Field label="ស្លោកសម្គាល់សាលា">
                 <input className="input" value={school.motto} onChange={(e) => setSchool({ ...school, motto: e.target.value })} />
               </Field>
-              <div className="sm:col-span-2 rounded-xl border border-ink-200 bg-ink-50/60 p-3">
-                <label className="flex cursor-pointer items-start gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={allowReg}
-                    onChange={(e) => setAllowReg(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600"
-                  />
-                  <span>
-                    <span className="block text-[12.5px] font-medium text-ink-800">
-                      អនុញ្ញាតឱ្យគ្រូបង្រៀនចុះឈ្មោះដោយ Gmail ដោយខ្លួនឯង
-                    </span>
-                    <span className="mt-0.5 block text-[11px] leading-relaxed text-ink-500">
-                      បើបិទ មានតែអ្នកគ្រប់គ្រងទេដែលអាចបង្កើតគណនីថ្មី។ គណនីដំបូងតែងតែជាអ្នកគ្រប់គ្រង។
-                    </span>
-                  </span>
-                </label>
-              </div>
-
               <GoogleOAuthCard />
             </div>
           </section>

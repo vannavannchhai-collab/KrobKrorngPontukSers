@@ -82,14 +82,17 @@ router.post(
 
 const GMAIL_RE = /^[a-z0-9](?:[a-z0-9._%+-]{1,62})@(?:gmail\.com|googlemail\.com)$/;
 
+/**
+ * Public sign-up is disabled by design: accounts are created by an administrator
+ * in «គ្រូបង្រៀន». The only exception is the very first account (the owner), which
+ * has to be created before anybody can sign in.
+ */
 router.get("/registration-status", (_req, res) => {
   const total = (db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
-  const settings = db.prepare("SELECT value FROM settings WHERE key = 'allow_registration'").get() as
-    | { value: string }
-    | undefined;
   res.json({
     has_users: total > 0,
-    allow_registration: (settings?.value ?? "1") !== "0",
+    allow_registration: false,
+    bootstrap: total === 0,
     users: total,
   });
 });
@@ -108,11 +111,11 @@ router.post(
     if (password.length < 8) throw new HttpError(400, "លេខសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ");
 
     const total = (db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
-    const allowRow = db.prepare("SELECT value FROM settings WHERE key = 'allow_registration'").get() as
-      | { value: string }
-      | undefined;
-    if (total > 0 && (allowRow?.value ?? "1") === "0") {
-      throw new HttpError(403, "ការចុះឈ្មោះគណនីថ្មីត្រូវបានបិទ។ សូមទាក់ទងអ្នកគ្រប់គ្រងប្រព័ន្ធ។");
+    if (total > 0) {
+      throw new HttpError(
+        403,
+        "ការចុះឈ្មោះគណនីថ្មីត្រូវបានបិទ។ គណនីបង្កើតដោយអ្នកគ្រប់គ្រងប៉ុណ្ណោះ — សូមទាក់ទងអ្នកគ្រប់គ្រងប្រព័ន្ធ។",
+      );
     }
 
     const existing = db
@@ -120,7 +123,7 @@ router.post(
       .get(email, email);
     if (existing) throw new HttpError(409, "អ៊ីមែលនេះបានចុះឈ្មោះរួចហើយ សូមចូលប្រើជំនួសវិញ");
 
-    const role: "admin" | "teacher" = total === 0 ? "admin" : "teacher";
+    const role: "admin" | "teacher" = "admin"; // owner bootstrap only
     const info = db
       .prepare(
         `INSERT INTO users (username, password_hash, name, role, email, is_active)
@@ -130,7 +133,7 @@ router.post(
     const userId = Number(info.lastInsertRowid);
 
     const payload: AuthUser = { id: userId, username: email, name, role, subject_id: null };
-    audit(payload, "create", "user", userId, `ចុះឈ្មោះគណនីថ្មីដោយ Gmail: ${email}`, req.ip);
+    audit(payload, "create", "user", userId, `បង្កើតគណនីម្ចាស់ប្រព័ន្ធ: ${email}`, req.ip);
     res.status(201).json({
       token: signToken(payload),
       user: { ...payload, email },
