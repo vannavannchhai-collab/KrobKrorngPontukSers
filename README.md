@@ -42,10 +42,49 @@ npm start          # http://localhost:4173
 ### អថេរបរិស្ថាន (ស្រេចចិត្ត)
 
 ```
-PORT=4173          # ច្រកម៉ាស៊ីនបម្រើ
-DB_PATH=...        # ទីតាំងឯកសារ SQLite
-JWT_SECRET=...     # កូនសោចុះហត្ថលេខា token (បើមិនកំណត់ ប្រព័ន្ធបង្កើតដោយស្វ័យប្រវត្តិ)
+PORT=4173                        # ច្រកម៉ាស៊ីនបម្រើ
+DB_PATH=...                      # ទីតាំងឯកសារ SQLite
+JWT_SECRET=...                   # កូនសោចុះហត្ថលេខា token (បើមិនកំណត់ ប្រព័ន្ធបង្កើតដោយស្វ័យប្រវត្តិ)
+GOOGLE_CLIENT_ID=...             # Google OAuth (ស្រេចចិត្ត)
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=...          # បើទុកទទេ គណនាពី host នៃសំណើ
 ```
+
+ចម្លង `.env.example` ទៅ `.env` (ឯកសារ `.env` ត្រូវបាន ignore ដោយ git)។
+
+---
+
+## 🔐 ការកំណត់ «ចូលប្រើដោយ Google» (OAuth 2.0)
+
+ប៊ូតុង **“ចូលប្រើដោយ Google”** ដំណើរការដោយ **Authorization Code + PKCE**។
+ប្រសិនបើមិនទាន់កំណត់ Client ID/Secret ប៊ូតុងនឹងលាក់ខ្លួន ហើយប្រព័ន្ធបន្តដំណើរការធម្មតា
+ដោយចុះឈ្មោះ/ចូលប្រើដោយ Gmail + លេខសម្ងាត់។
+
+1. ចូល <https://console.cloud.google.com/apis/credentials> → **Create credentials → OAuth client ID**
+2. Application type៖ **Web application**
+3. **Authorized redirect URIs** (ត្រូវដូចគ្នា ១០០% រួមទាំង `http/https` និង port)៖
+   - `http://localhost:4173/api/auth/google/callback`
+   - `https://<host-ពិតរបស់អ្នក>/api/auth/google/callback`
+4. ដាក់តម្លៃក្នុង `.env` (ឬ environment variables)៖
+
+```bash
+GOOGLE_CLIENT_ID=xxxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=xxxxx
+# ស្រេចចិត្ត បើ redirect URI មិនអាចគណនាពី host បាន
+GOOGLE_REDIRECT_URI=https://example.com/api/auth/google/callback
+```
+
+5. ចាប់ផ្ដើមឡើងវិញ (`npm start`)។ តំណភ្ជាប់ redirect ពិតបង្ហាញនៅ **ការកំណត់ → ព័ត៌មានសាលា**
+
+**ដំណើរការខាងក្នុង**
+- `GET /api/auth/google/status` → បង្ហាញថាបានបើក ឬអត់ + redirect URI
+- `GET /api/auth/google/start` → បង្កើត `state` + PKCE (`S256`) រួចបញ្ជូនទៅ Google
+- `GET /api/auth/google/callback` → ផ្ទៀងផ្ទាត់ `state`, ប្ដូរ code ជា token, ពិនិត្យ `email_verified`
+  និងដែន `@gmail.com`, បន្ទាប់មកបង្កើត/ភ្ជាប់គណនី
+- `POST /api/auth/google/exchange` → ប្ដូរ one-time code ជា JWT (កូដមានអាយុ ២ នាទី, ប្រើបានតែម្ដង)
+- គណនីថ្មីតាម Google គោរពការកំណត់ **បិទ/បើកការចុះឈ្មោះ**; គណនីដំបូង = អ្នកគ្រប់គ្រង
+- ក្នុង iframe (Live Preview) Google មិនអនុញ្ញាតឱ្យបង្ហាញ consent ក្នុង frame ទេ
+  ដូច្នេះប្រព័ន្ធបើកជា **popup** ហើយផ្ទេរ session តាម `postMessage` (same-origin)
 
 ---
 
@@ -53,7 +92,7 @@ JWT_SECRET=...     # កូនសោចុះហត្ថលេខា token (ប
 
 | មុខងារ | ការពិពណ៌នា |
 |---|---|
-| **ចុះឈ្មោះ/ចូលប្រើពិត** | ចុះឈ្មោះដោយ Gmail, JWT, កូដពាក្យសម្ងាត់ scrypt, ការពារ brute-force, បិទ/បើកការចុះឈ្មោះ |
+| **ចុះឈ្មោះ/ចូលប្រើពិត** | ចុះឈ្មោះដោយ Gmail, JWT, កូដពាក្យសម្ងាត់ scrypt, ការពារ brute-force, បិទ/បើកការចុះឈ្មោះ, **ចូលប្រើដោយ Google (OAuth 2.0 + PKCE)** |
 | **រៀបចំប្រព័ន្ធដំបូង** | ទំព័រ setup ណែនាំជាជំហានៗ (សាលា → ឆ្នាំសិក្សា → មុខវិជ្ជា → ថ្នាក់) |
 | **ផ្ទាំងគ្រប់គ្រង** | KPI មធ្យមភាគសាលា អត្រាជាប់ អត្រាវត្តមាន ក្រាហ្វនិន្នាការ ការបែងចែកនិទ្ទេស សិស្សឆ្នើម និងសិស្សត្រូវការយកចិត្តទុកដាក់ |
 | **សិស្ស** | បញ្ជីសិស្ស (ស្វែងរក/តម្រង/តម្រៀប/ទំព័រ) ប្រវត្តិពេញលេញ CRUD ផ្ទេរថ្នាក់ជាក្រុម នាំចូល/នាំចេញ CSV |

@@ -13,6 +13,8 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, password: string) => Promise<User>;
   register: (input: RegisterInput) => Promise<{ user: User; firstAccount: boolean }>;
+  /** Adopt a session issued elsewhere (e.g. the Google OAuth popup). */
+  adopt: (token: string, nextUser: User) => void;
   logout: () => void;
 }
 
@@ -70,14 +72,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { user: res.user, firstAccount: res.first_account };
   }, []);
 
+  const adopt = useCallback((token: string, nextUser: User) => {
+    setSession(token, nextUser);
+    setUser(nextUser);
+  }, []);
+
   const logout = useCallback(() => {
     clearSession();
     setUser(null);
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, login, register, logout }),
-    [user, loading, login, register, logout],
+    () => ({ user, loading, login, register, adopt, logout }),
+    [user, loading, login, register, adopt, logout],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

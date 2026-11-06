@@ -1,3 +1,4 @@
+import "./env.js";
 import express from "express";
 import path from "node:path";
 import fs from "node:fs";
@@ -6,6 +7,7 @@ import { initSchema } from "./db.js";
 import { HttpError } from "./util.js";
 
 import authRoutes from "./routes/auth.js";
+import googleAuthRoutes from "./routes/googleAuth.js";
 import academicsRoutes from "./routes/academics.js";
 import studentsRoutes from "./routes/students.js";
 import scoresRoutes from "./routes/scores.js";
@@ -36,6 +38,7 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString(), version: "1.0.0" });
 });
 
+app.use("/api/auth", googleAuthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api", academicsRoutes);
 app.use("/api/students", studentsRoutes);

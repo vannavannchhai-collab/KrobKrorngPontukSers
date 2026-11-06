@@ -15,6 +15,8 @@ import {
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { Field, Spinner } from "../components/ui";
+import { GoogleButton, GoogleErrorBox } from "../components/GoogleButton";
+import { useGoogleAuth } from "../lib/google";
 
 const HIGHLIGHTS = [
   { icon: BarChart3, title: "របាយការណ៍ពិន្ទុរស់រវើក", text: "តាមដានមធ្យមភាគ និទ្ទេស និងចំណាត់ថ្នាក់ភ្លាមៗ" },
@@ -31,6 +33,7 @@ export default function LoginPage() {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const google = useGoogleAuth();
 
   const { data: regStatus } = useQuery({
     queryKey: ["registration-status"],
@@ -142,7 +145,21 @@ export default function LoginPage() {
             ចូលដោយគណនី Gmail ពិតរបស់អ្នក ដើម្បីបន្តការងារគ្រប់គ្រងពិន្ទុសិស្ស។
           </p>
 
-          <form onSubmit={submit} className="mt-7 space-y-4">
+          {google.status?.enabled ? (
+            <div className="mt-6">
+              <GoogleButton onClick={google.start} busy={google.busy} label="ចូលប្រើដោយ Google" />
+              <div className="my-5 flex items-center gap-3">
+                <span className="h-px flex-1 bg-ink-200" />
+                <span className="text-[11px] font-medium uppercase tracking-wider text-ink-400">
+                  ឬប្រើអ៊ីមែល និងលេខសម្ងាត់
+                </span>
+                <span className="h-px flex-1 bg-ink-200" />
+              </div>
+            </div>
+          ) : null}
+          <GoogleErrorBox message={google.error} />
+
+          <form onSubmit={submit} className={google.status?.enabled ? "mt-1 space-y-4" : "mt-7 space-y-4"}>
             <Field label="អ៊ីមែល (Gmail)" required>
               <div className="relative">
                 <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
