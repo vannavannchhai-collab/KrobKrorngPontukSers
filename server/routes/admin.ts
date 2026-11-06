@@ -3,9 +3,84 @@ import { db, audit, getSettings, setSetting } from "../db.js";
 import { adminOnly, authRequired, hashPassword } from "../auth.js";
 import { HttpError, asyncHandler, pageParams } from "../util.js";
 import { getGradeScale, getScoreTypes } from "../compute.js";
+import {
+  GoogleConfigError,
+  clearGoogleConfig,
+  getGoogleConfig,
+  maskClientId,
+  publicBaseUrl,
+  redirectUriFor,
+  saveGoogleConfig,
+} from "../google.js";
 
 const router = Router();
 router.use(authRequired);
+
+/* ------------------------------- google oauth ----------------------------- */
+
+router.get("/google", adminOnly, (req, res) => {
+  const cfg = getGoogleConfig();
+  res.json({
+    enabled: cfg.enabled,
+    source: cfg.source,
+    client_id: cfg.clientId,
+    client_id_masked: maskClientId(cfg.clientId),
+    has_secret: Boolean(cfg.clientSecret),
+    managed_by_env: cfg.source === "env",
+    redirect_uri: redirectUriFor(req),
+    redirect_uri_override: cfg.redirectUri,
+    suggested_redirect_uri: `${publicBaseUrl(req)}/api/auth/google/callback`,
+  });
+});
+
+router.put(
+  "/google",
+  adminOnly,
+  asyncHandler(async (req, res) => {
+    const clientId = String(req.body?.client_id ?? "").trim();
+    const clientSecret = String(req.body?.client_secret ?? "").trim();
+    if (getGoogleConfig().source === "env") {
+      throw new HttpError(
+        400,
+        "កំណត់តម្លៃតាម environment variables រួចហើយ — សូមកែ GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET នៅម៉ាស៊ីនមេ",
+      );
+    }
+    try {
+      saveGoogleConfig({
+        clientId,
+        clientSecret,
+        redirectUri: String(req.body?.redirect_uri ?? "").trim(),
+      });
+    } catch (err) {
+      if (err instanceof GoogleConfigError) throw new HttpError(400, err.message);
+      throw err;
+    }
+    audit(req.user, "update", "settings", null, "កំណត់ Google OAuth (Client ID/Secret)", req.ip);
+    const cfg = getGoogleConfig();
+    res.json({
+      ok: true,
+      enabled: cfg.enabled,
+      source: cfg.source,
+      client_id: cfg.clientId,
+      client_id_masked: maskClientId(cfg.clientId),
+      has_secret: Boolean(cfg.clientSecret),
+      managed_by_env: false,
+      redirect_uri: redirectUriFor(req),
+      redirect_uri_override: cfg.redirectUri,
+      suggested_redirect_uri: `${publicBaseUrl(req)}/api/auth/google/callback`,
+    });
+  }),
+);
+
+router.delete(
+  "/google",
+  adminOnly,
+  asyncHandler(async (req, res) => {
+    clearGoogleConfig();
+    audit(req.user, "delete", "settings", null, "បិទ Google OAuth (លុប Client ID/Secret)", req.ip);
+    res.json({ ok: true, enabled: false, source: null, has_secret: false, managed_by_env: false });
+  }),
+);
 
 /* ---------------------------------- users --------------------------------- */
 

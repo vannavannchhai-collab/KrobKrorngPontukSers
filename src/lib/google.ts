@@ -44,6 +44,7 @@ export function useGoogleAuth() {
   const [status, setStatus] = useState<GoogleStatus | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [popupBlocked, setPopupBlocked] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -99,6 +100,7 @@ export function useGoogleAuth() {
       return;
     }
     setError("");
+    setPopupBlocked(false);
     const url = `/api/auth/google/start?next=${encodeURIComponent("/dashboard")}`;
     const inIframe = window.self !== window.top;
     if (!inIframe) {
@@ -113,11 +115,16 @@ export function useGoogleAuth() {
     );
     if (!popup) {
       setBusy(false);
+      setPopupBlocked(true);
       setError(
-        "បង្អួចចូលប្រើ Google ត្រូវបានទប់ស្កាត់។ សូមអនុញ្ញាត popup ឬបើកប្រព័ន្ធនេះក្នុងផ្ទាំងថ្មី។",
+        "បង្អួចចូលប្រើ Google ត្រូវបានទប់ស្កាត់ដោយ browser។ សូមបើកប្រព័ន្ធនេះក្នុងផ្ទាំងថ្មី រួចព្យាយាមម្ដងទៀត។",
       );
     }
   }, [status?.enabled]);
 
-  return { status, error, busy, start, setError };
+  const openInNewTab = useCallback(() => {
+    window.open(window.location.href, "_blank", "noopener");
+  }, []);
+
+  return { status, error, busy, popupBlocked, start, openInNewTab, setError };
 }

@@ -5,6 +5,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { initSchema } from "./db.js";
 import { HttpError } from "./util.js";
+import { getGoogleConfig } from "./google.js";
 
 import authRoutes from "./routes/auth.js";
 import googleAuthRoutes from "./routes/googleAuth.js";
@@ -35,7 +36,13 @@ app.use((_req, res, next) => {
 });
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, time: new Date().toISOString(), version: "1.0.0" });
+  const google = getGoogleConfig();
+  res.json({
+    ok: true,
+    time: new Date().toISOString(),
+    version: "1.0.0",
+    google_oauth: google.enabled ? `enabled (${google.source})` : "disabled",
+  });
 });
 
 app.use("/api/auth", googleAuthRoutes);
@@ -84,5 +91,11 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 });
 
 app.listen(PORT, "0.0.0.0", () => {
+  const google = getGoogleConfig();
   console.log(`🚀 ប្រព័ន្ធគ្រប់គ្រងពិន្ទុសិស្ស ដំណើរការ http://0.0.0.0:${PORT}`);
+  console.log(
+    google.enabled
+      ? `   Google OAuth: បានបើក (${google.source === "env" ? "environment variables" : "ការកំណត់ក្នុងប្រព័ន្ធ"})`
+      : "   Google OAuth: មិនទាន់បើក — កំណត់នៅ ការកំណត់ → ព័ត៌មានសាលា",
+  );
 });
