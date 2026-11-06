@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, CalendarRange, Check, GraduationCap, Plus, Save, Scale, Trash2 } from "lucide-react";
+import {
+  Building2,
+  CalendarRange,
+  Check,
+  Copy,
+  GraduationCap,
+  KeyRound,
+  Plus,
+  Save,
+  Scale,
+  Trash2,
+} from "lucide-react";
 import { api } from "../lib/api";
 import type { GradeInfo, ScoreType, Term, AcademicYear } from "../lib/types";
 import { EmptyState, Field, PageLoader, Spinner, Tabs } from "../components/ui";
@@ -23,6 +34,12 @@ export default function SettingsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["settings"],
     queryFn: () => api<SettingsResponse>("/admin/settings"),
+  });
+
+  const { data: google } = useQuery({
+    queryKey: ["google-status"],
+    queryFn: () =>
+      api<{ enabled: boolean; redirect_uri: string | null }>("/auth/google/status"),
   });
 
   const [school, setSchool] = useState({
@@ -195,6 +212,54 @@ export default function SettingsPage() {
                     </span>
                   </span>
                 </label>
+              </div>
+
+              <div className="sm:col-span-2 rounded-xl border border-ink-200 bg-white p-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ink-100 text-ink-600">
+                      <KeyRound size={15} />
+                    </span>
+                    <div>
+                      <p className="text-[12.5px] font-semibold text-ink-800">ចូលប្រើដោយ Google (OAuth)</p>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-ink-500">
+                        គណនី Gmail អាចចូលប្រើដោយ Google ដោយមិនចាំបាច់វាយលេខសម្ងាត់។
+                        ត្រូវការកំណត់ <code className="rounded bg-ink-100 px-1">GOOGLE_CLIENT_ID</code>{" "}
+                        និង <code className="rounded bg-ink-100 px-1">GOOGLE_CLIENT_SECRET</code> នៅម៉ាស៊ីនមេ។
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-2.5 py-1 text-[10.5px] font-semibold",
+                      google?.enabled
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-amber-50 text-amber-700",
+                    )}
+                  >
+                    {google?.enabled ? "បានបើក" : "មិនទាន់កំណត់"}
+                  </span>
+                </div>
+                {google?.enabled && google.redirect_uri ? (
+                  <div className="mt-3 rounded-lg border border-ink-200 bg-ink-50/60 p-2.5">
+                    <p className="text-[10.5px] font-medium text-ink-500">
+                      Authorized redirect URI (ដាក់ក្នុង Google Cloud Console)
+                    </p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <code className="flex-1 truncate text-[11px] text-ink-700">{google.redirect_uri}</code>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm shrink-0"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(google.redirect_uri ?? "");
+                          toast.success("បានចម្លងតំណភ្ជាប់", "ដាក់ក្នុង Authorized redirect URIs");
+                        }}
+                      >
+                        <Copy size={12} /> ចម្លង
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           </section>

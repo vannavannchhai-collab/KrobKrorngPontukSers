@@ -15,6 +15,8 @@ import {
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Field, Spinner } from "../components/ui";
+import { GoogleButton, GoogleErrorBox } from "../components/GoogleButton";
+import { useGoogleAuth } from "../lib/google";
 import { useToast } from "../components/Toast";
 import { cn } from "../lib/utils";
 
@@ -33,6 +35,7 @@ export default function RegisterPage() {
   const [accept, setAccept] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const google = useGoogleAuth();
 
   const { data: status } = useQuery({
     queryKey: ["registration-status"],
@@ -153,7 +156,31 @@ export default function RegisterPage() {
               ដើម្បីបង្កើតគណនីជំនួសអ្នក។
             </div>
           ) : (
-            <form onSubmit={submit} className="mt-6 space-y-4">
+            <>
+              <div className="mt-5">
+                <GoogleButton
+                  onClick={google.start}
+                  busy={google.busy}
+                  label="ចុះឈ្មោះដោយ Google"
+                  disabled={!google.status?.enabled}
+                />
+                {!google.status?.enabled ? (
+                  <p className="mt-2 text-center text-[11px] leading-relaxed text-ink-400">
+                    Google OAuth មិនទាន់បានកំណត់ — សូមប្រើទម្រង់ខាងក្រោម ឬស្នើអ្នកគ្រប់គ្រងបើកដំណើរការ។
+                  </p>
+                ) : (
+                  <div className="my-5 flex items-center gap-3">
+                    <span className="h-px flex-1 bg-ink-200" />
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-ink-400">
+                      ឬបំពេញព័ត៌មានខាងក្រោម
+                    </span>
+                    <span className="h-px flex-1 bg-ink-200" />
+                  </div>
+                )}
+              </div>
+              <GoogleErrorBox message={google.error} />
+
+              <form onSubmit={submit} className="mt-5 space-y-4">
               <Field label="ឈ្មោះពេញ" required>
                 <div className="relative">
                   <UserIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
@@ -249,7 +276,8 @@ export default function RegisterPage() {
                 {busy ? <Spinner /> : <ShieldCheck size={15} />}
                 បង្កើតគណនី
               </button>
-            </form>
+              </form>
+            </>
           )}
 
           <p className="mt-6 text-center text-[12px] text-ink-500">

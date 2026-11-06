@@ -171,8 +171,19 @@ export function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date, class_id);
     CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
   `);
+  ensureColumn("users", "google_sub", "TEXT");
+  ensureColumn("users", "avatar_url", "TEXT");
+  ensureColumn("users", "auth_provider", "TEXT NOT NULL DEFAULT 'password'");
   seedSettings();
   seedScoreTypes();
+}
+
+/** Lightweight migration helper for columns added after the first release. */
+function ensureColumn(table: string, column: string, ddl: string) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
 }
 
 const DEFAULT_SETTINGS: Record<string, string> = {
