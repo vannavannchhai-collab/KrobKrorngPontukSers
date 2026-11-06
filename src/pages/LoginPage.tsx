@@ -157,7 +157,17 @@ export default function LoginPage() {
               </div>
             </div>
           ) : null}
-          <GoogleErrorBox message={google.error} />
+          <GoogleErrorBox message={google.error} action={
+              google.popupBlocked ? (
+                <button
+                  type="button"
+                  onClick={google.openInNewTab}
+                  className="text-[11.5px] font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-950"
+                >
+                  បើកប្រព័ន្ធក្នុងផ្ទាំងថ្មី →
+                </button>
+              ) : undefined
+            } />
 
           <form onSubmit={submit} className={google.status?.enabled ? "mt-1 space-y-4" : "mt-7 space-y-4"}>
             <Field label="អ៊ីមែល (Gmail)" required>

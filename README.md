@@ -56,35 +56,41 @@ GOOGLE_REDIRECT_URI=...          # បើទុកទទេ គណនាពី h
 
 ## 🔐 ការកំណត់ «ចូលប្រើដោយ Google» (OAuth 2.0)
 
-ប៊ូតុង **“ចូលប្រើដោយ Google”** ដំណើរការដោយ **Authorization Code + PKCE**។
-ប្រសិនបើមិនទាន់កំណត់ Client ID/Secret ប៊ូតុងនឹងលាក់ខ្លួន ហើយប្រព័ន្ធបន្តដំណើរការធម្មតា
-ដោយចុះឈ្មោះ/ចូលប្រើដោយ Gmail + លេខសម្ងាត់។
+មាន **ពីរវិធី** ក្នុងការកំណត់ — មិនចាំបាច់កែកូដទេ៖
 
-1. ចូល <https://console.cloud.google.com/apis/credentials> → **Create credentials → OAuth client ID**
-2. Application type៖ **Web application**
-3. **Authorized redirect URIs** (ត្រូវដូចគ្នា ១០០% រួមទាំង `http/https` និង port)៖
-   - `http://localhost:4173/api/auth/google/callback`
-   - `https://<host-ពិតរបស់អ្នក>/api/auth/google/callback`
-4. ដាក់តម្លៃក្នុង `.env` (ឬ environment variables)៖
+### វិធីទី១ (ងាយស្រួលបំផុត) — កំណត់ក្នុងកម្មវិធី
+1. ចូលជា **អ្នកគ្រប់គ្រង** → **ការកំណត់ → ព័ត៌មានសាលា → ចូលប្រើដោយ Google**
+2. ចម្លង **Authorized redirect URI** ដែលបង្ហាញនៅទីនោះ
+3. បើក <https://console.cloud.google.com/apis/credentials> → **Create credentials → OAuth client ID**
+   → Application type: **Web application** → បិទភ្ជាប់ redirect URI ខាងលើ
+4. ចម្លង **Client ID** និង **Client secret** មកបំពេញក្នុងកម្មវិធី → **រក្សាទុក និងបើកដំណើរការ**
+5. បើ OAuth consent screen នៅ **Testing** → បន្ថែមអ៊ីមែលរបស់អ្នកក្នុង **Test users**
+   (បើអត់ នឹងឃើញ “Access blocked”)
 
+ប៊ូតុង **“ចូលប្រើដោយ Google”** នឹងបង្ហាញនៅទំព័រចូលប្រើភ្លាមៗ —
+**មិនចាំបាច់ restart ម៉ាស៊ីនមេទេ**។
+Client Secret ត្រូវបាន **អ៊ិនគ្រីប AES-256-GCM** មុនរក្សាទុក និងមិនផ្ញើត្រឡប់ទៅ browser ឡើយ។
+
+### វិធីទី២ — environment variables (សម្រាប់ server)
 ```bash
 GOOGLE_CLIENT_ID=xxxxx.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=xxxxx
 # ស្រេចចិត្ត បើ redirect URI មិនអាចគណនាពី host បាន
 GOOGLE_REDIRECT_URI=https://example.com/api/auth/google/callback
 ```
+ចម្លង `.env.example` ទៅ `.env` (ត្រូវបាន ignore ដោយ git)។ បើកំណត់តាម env
+ផ្ទាំងការកំណត់នឹងបង្ហាញថា «កំពុងមកពី environment variables» ហើយមិនអនុញ្ញាតកែក្នុងកម្មវិធី។
 
-5. ចាប់ផ្ដើមឡើងវិញ (`npm start`)។ តំណភ្ជាប់ redirect ពិតបង្ហាញនៅ **ការកំណត់ → ព័ត៌មានសាលា**
-
-**ដំណើរការខាងក្នុង**
-- `GET /api/auth/google/status` → បង្ហាញថាបានបើក ឬអត់ + redirect URI
-- `GET /api/auth/google/start` → បង្កើត `state` + PKCE (`S256`) រួចបញ្ជូនទៅ Google
-- `GET /api/auth/google/callback` → ផ្ទៀងផ្ទាត់ `state`, ប្ដូរ code ជា token, ពិនិត្យ `email_verified`
-  និងដែន `@gmail.com`, បន្ទាប់មកបង្កើត/ភ្ជាប់គណនី
-- `POST /api/auth/google/exchange` → ប្ដូរ one-time code ជា JWT (កូដមានអាយុ ២ នាទី, ប្រើបានតែម្ដង)
-- គណនីថ្មីតាម Google គោរពការកំណត់ **បិទ/បើកការចុះឈ្មោះ**; គណនីដំបូង = អ្នកគ្រប់គ្រង
-- ក្នុង iframe (Live Preview) Google មិនអនុញ្ញាតឱ្យបង្ហាញ consent ក្នុង frame ទេ
-  ដូច្នេះប្រព័ន្ធបើកជា **popup** ហើយផ្ទេរ session តាម `postMessage` (same-origin)
+### ដំណើរការខាងក្នុង
+- `GET /api/auth/google/status` → { enabled, source, redirect_uri }
+- `GET /api/auth/google/start` → `state` + PKCE (`S256`) រួចបញ្ជូនទៅ Google
+- `GET /api/auth/google/callback` → ផ្ទៀងផ្ទាត់ state, ប្ដូរ code → token,
+  ពិនិត្យ `email_verified` និងដែន `@gmail.com`, បន្ទាប់មកបង្កើត/ភ្ជាប់គណនី
+- `POST /api/auth/google/exchange` → one-time code (២ នាទី, ប្រើម្ដង) → JWT
+- `GET/PUT/DELETE /api/admin/google` → ការកំណត់ (អ្នកគ្រប់គ្រងប៉ុណ្ណោះ, មាន audit log)
+- គណនីថ្មីតាម Google គោរពការបិទ/បើកការចុះឈ្មោះ; គណនីដំបូង = អ្នកគ្រប់គ្រង
+- ក្នុង iframe (Live Preview) Google មិនអនុញ្ញាត consent ក្នុង frame → ប្រព័ន្ធបើកជា **popup**
+  ហើយផ្ទេរ session តាម `postMessage`។ បើ popup ត្រូវទប់ស្កាត់ មានប៊ូតុង «បើកក្នុងផ្ទាំងថ្មី»។
 
 ---
 

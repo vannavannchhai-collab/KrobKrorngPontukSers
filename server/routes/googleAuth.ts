@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { db, audit } from "../db.js";
 import { signToken, hashPassword, type AuthUser } from "../auth.js";
 import { HttpError, asyncHandler } from "../util.js";
+import { getGoogleConfig, redirectUriFor } from "../google.js";
 
 /**
  * Google OAuth 2.0 (Authorization Code + PKCE) — "ចូលប្រើដោយ Google".
@@ -42,34 +43,13 @@ const pendingStates = new Map<string, PendingState>();
 const pendingCodes = new Map<string, PendingCode>();
 
 function config() {
-  const clientId = (process.env.GOOGLE_CLIENT_ID ?? "").trim();
-  const clientSecret = (process.env.GOOGLE_CLIENT_SECRET ?? "").trim();
-  const redirectUri = (process.env.GOOGLE_REDIRECT_URI ?? "").trim();
-  return { clientId, clientSecret, redirectUri, enabled: Boolean(clientId && clientSecret) };
+  return getGoogleConfig();
 }
 
 function sweep() {
   const now = Date.now();
   for (const [k, v] of pendingStates) if (now - v.createdAt > STATE_TTL_MS) pendingStates.delete(k);
   for (const [k, v] of pendingCodes) if (now - v.createdAt > CODE_TTL_MS) pendingCodes.delete(k);
-}
-
-function baseUrl(req: Request): string {
-  const proto =
-    String(req.headers["x-forwarded-proto"] ?? "")
-      .split(",")[0]
-      .trim() || req.protocol || "http";
-  const host =
-    String(req.headers["x-forwarded-host"] ?? "")
-      .split(",")[0]
-      .trim() ||
-    req.get("host") ||
-    `localhost:${process.env.PORT ?? 4173}`;
-  return `${proto}://${host}`;
-}
-
-function redirectUriFor(req: Request): string {
-  return config().redirectUri || `${baseUrl(req)}/api/auth/google/callback`;
 }
 
 function base64url(buf: Buffer): string {
@@ -105,8 +85,10 @@ async function fetchJson(
 
 router.get("/google/status", (req, res) => {
   const { enabled } = config();
+  const cfg = getGoogleConfig();
   res.json({
     enabled,
+    source: cfg.source,
     redirect_uri: enabled ? redirectUriFor(req) : null,
     scope: "openid email profile",
     gmail_only: true,
