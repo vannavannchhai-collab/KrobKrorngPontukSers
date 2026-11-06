@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import {
   BookOpen,
   BarChart3,
@@ -7,10 +8,12 @@ import {
   EyeOff,
   GraduationCap,
   Lock,
+  Mail,
   ShieldCheck,
-  User as UserIcon,
+  UserPlus,
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
+import { api } from "../lib/api";
 import { Field, Spinner } from "../components/ui";
 
 const HIGHLIGHTS = [
@@ -28,6 +31,12 @@ export default function LoginPage() {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const { data: regStatus } = useQuery({
+    queryKey: ["registration-status"],
+    queryFn: () =>
+      api<{ has_users: boolean; allow_registration: boolean; users: number }>("/auth/registration-status"),
+  });
 
   if (user) return <Navigate to={location.state?.from ?? "/dashboard"} replace />;
 
@@ -47,12 +56,6 @@ export default function LoginPage() {
     } finally {
       setBusy(false);
     }
-  };
-
-  const fill = (u: string, p: string) => {
-    setUsername(u);
-    setPassword(p);
-    setError("");
   };
 
   return (
@@ -114,7 +117,7 @@ export default function LoginPage() {
         </div>
 
         <p className="relative text-[11px] text-ink-500">
-          © {new Date().getFullYear()} រក្សាសិទ្ធិគ្រប់បែបយ៉ាង · បង្កើតសម្រាប់សាលារៀនកម្ពុជា
+          © {new Date().getFullYear()} រក្សាសិទ្ធិគ្រប់យ៉ាងដោយ វណ្ណា វណ្ណឆៃ
         </p>
       </div>
 
@@ -136,16 +139,16 @@ export default function LoginPage() {
           </div>
           <h1 className="text-[26px] font-bold leading-tight text-ink-950">សូមស្វាគមន៍ត្រឡប់មកវិញ</h1>
           <p className="mt-1.5 text-sm text-ink-500">
-            ចូលដោយគណនីរបស់អ្នក ដើម្បីបន្តការងារគ្រប់គ្រងពិន្ទុសិស្ស។
+            ចូលដោយគណនី Gmail ពិតរបស់អ្នក ដើម្បីបន្តការងារគ្រប់គ្រងពិន្ទុសិស្ស។
           </p>
 
           <form onSubmit={submit} className="mt-7 space-y-4">
-            <Field label="ឈ្មោះអ្នកប្រើ" required>
+            <Field label="អ៊ីមែល (Gmail)" required>
               <div className="relative">
-                <UserIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
+                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
                 <input
                   className="input pl-9"
-                  placeholder="ឧ. admin"
+                  placeholder="yourname@gmail.com"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"
@@ -160,7 +163,7 @@ export default function LoginPage() {
                 <input
                   className="input px-9"
                   type={show ? "text" : "password"}
-                  placeholder="••••••••"
+                  placeholder="បញ្ចូលលេខសម្ងាត់"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
@@ -188,22 +191,36 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-8 rounded-xl border border-dashed border-ink-300 bg-white p-3.5">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
-              គណនីសាកល្បង
+          <div className="mt-7 rounded-xl border border-ink-200 bg-white p-4 text-center">
+            <p className="text-[12.5px] font-semibold text-ink-800">
+              {regStatus?.has_users === false
+                ? "មិនទាន់មានគណនីនៅក្នុងប្រព័ន្ធនេះទេ"
+                : "មិនទាន់មានគណនី? ចុះឈ្មោះដោយ Gmail"}
             </p>
-            <div className="flex flex-wrap gap-2">
-              <button className="chip" onClick={() => fill("admin", "admin123")} type="button">
-                <ShieldCheck size={13} className="text-brand-500" /> admin / admin123
-              </button>
-              <button className="chip" onClick={() => fill("teacher1", "123456")} type="button">
-                <UserIcon size={13} className="text-emerald-500" /> teacher1 / 123456
-              </button>
-            </div>
+            <p className="mt-1 text-[11.5px] leading-relaxed text-ink-500">
+              {regStatus?.has_users === false
+                ? "ចុះឈ្មោះគណនីដំបូង ដើម្បីក្លាយជាម្ចាស់ និងអ្នកគ្រប់គ្រងប្រព័ន្ធ។"
+                : "គណនីគ្រូបង្រៀនអាចចុះឈ្មោះបាន ហើយរង់ចាំការចាត់តាំងពីអ្នកគ្រប់គ្រង។"}
+            </p>
+            {regStatus && regStatus.has_users && !regStatus.allow_registration ? (
+              <p className="mt-2 text-[11px] text-amber-700">
+                ការចុះឈ្មោះត្រូវបានបិទ — សូមទាក់ទងអ្នកគ្រប់គ្រង។
+              </p>
+            ) : (
+              <Link
+                to="/register"
+                className="btn-secondary btn-sm mt-3 w-full justify-center border-brand-200 bg-brand-50 text-brand-700 hover:border-brand-300 hover:bg-brand-100"
+              >
+                <UserPlus size={14} /> ចុះឈ្មោះដោយ Gmail
+              </Link>
+            )}
           </div>
 
-          <p className="mt-6 text-center text-[11px] leading-relaxed text-ink-400">
+          <p className="mt-5 text-center text-[11px] leading-relaxed text-ink-400">
             ប្រសិនបើអ្នកភ្លេចលេខសម្ងាត់ សូមទាក់ទងអ្នកគ្រប់គ្រងប្រព័ន្ធរបស់សាលា។
+          </p>
+          <p className="mt-3 text-center text-[11px] leading-relaxed text-ink-400">
+            រក្សាសិទ្ធិគ្រប់យ៉ាងដោយ <span className="font-semibold text-ink-600">វណ្ណា វណ្ណឆៃ</span>
           </p>
         </div>
       </div>

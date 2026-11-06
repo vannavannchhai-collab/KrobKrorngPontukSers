@@ -4,6 +4,8 @@ import { useAuth } from "./lib/auth";
 import { AppLayout } from "./components/AppLayout";
 import { PageLoader } from "./components/ui";
 import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
+import SetupPage from "./pages/SetupPage";
 import DashboardPage from "./pages/DashboardPage";
 import StudentsPage from "./pages/StudentsPage";
 import StudentDetailPage from "./pages/StudentDetailPage";
@@ -37,6 +39,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
       <Route
         element={
           <RequireAuth>
@@ -48,6 +51,14 @@ export default function App() {
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route
+          path="/setup"
+          element={
+            <RequireAdmin>
+              <SetupPage />
+            </RequireAdmin>
+          }
+        />
         <Route path="/students" element={<StudentsPage />} />
         <Route path="/students/:id" element={<StudentDetailPage />} />
         <Route path="/scores" element={<ScoreEntryPage />} />

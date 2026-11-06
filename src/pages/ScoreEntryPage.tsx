@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
   AlertCircle,
   CheckCircle2,
@@ -255,6 +256,29 @@ export default function ScoreEntryPage() {
       setSubjectId(teacherSubjects[0].id);
     }
   }, [teacherSubjects, subjectId, user]);
+
+  if (meta && meta.terms.length === 0) {
+    return (
+      <div className="card animate-fade-in">
+        <EmptyState
+          icon={ClipboardList}
+          title="មិនទាន់មានឆ្នាំសិក្សា"
+          description={
+            user?.role === "admin"
+              ? "សូមបង្កើតឆ្នាំសិក្សា និងឆមាសជាមុន ដើម្បីចាប់ផ្ដើមបញ្ចូលពិន្ទុ។"
+              : "សូមរង់ចាំអ្នកគ្រប់គ្រងបង្កើតឆ្នាំសិក្សា។"
+          }
+          action={
+            user?.role === "admin" ? (
+              <Link to="/setup" className="btn-primary btn-sm">
+                រៀបចំឆ្នាំសិក្សា
+              </Link>
+            ) : undefined
+          }
+        />
+      </div>
+    );
+  }
 
   if (user?.role !== "admin" && assignments && assignments.data.length === 0) {
     return (

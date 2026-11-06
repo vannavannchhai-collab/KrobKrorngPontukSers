@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { CalendarCheck2, CheckCheck, Download, Save, Users } from "lucide-react";
 import { api, download } from "../lib/api";
 import { useMeta } from "../lib/useMeta";
@@ -109,6 +110,23 @@ export default function AttendancePage() {
       setSaving(false);
     }
   };
+
+  if (meta && meta.classes.length === 0) {
+    return (
+      <div className="card animate-fade-in">
+        <EmptyState
+          icon={CalendarCheck2}
+          title="មិនទាន់មានថ្នាក់រៀន"
+          description="សូមបង្កើតថ្នាក់រៀន និងបន្ថែមសិស្សជាមុន ទើបអាចកត់ត្រាវត្តមានបាន។"
+          action={
+            <Link to="/classes" className="btn-primary btn-sm">
+              ទៅគ្រប់គ្រងថ្នាក់រៀន
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 animate-fade-in">

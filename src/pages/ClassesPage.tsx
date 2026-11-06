@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   BookOpen,
+  CalendarRange,
   Pencil,
   Plus,
   School,
@@ -124,7 +125,22 @@ export default function ClassesPage() {
         ) : null}
       </div>
 
-      {meta.classes.length === 0 ? (
+      {meta.years.length === 0 ? (
+        <div className="card">
+          <EmptyState
+            icon={CalendarRange}
+            title="មិនទាន់មានឆ្នាំសិក្សា"
+            description="ត្រូវការឆ្នាំសិក្សាមួយ ដើម្បីបង្កើតថ្នាក់រៀន។ សូមរៀបចំប្រព័ន្ធជាមុន។"
+            action={
+              isAdmin ? (
+                <Link to="/setup" className="btn-primary btn-sm">
+                  រៀបចំប្រព័ន្ធ
+                </Link>
+              ) : undefined
+            }
+          />
+        </div>
+      ) : meta.classes.length === 0 ? (
         <div className="card">
           <EmptyState icon={School} title="មិនទាន់មានថ្នាក់" description="ចាប់ផ្ដើមដោយបង្កើតថ្នាក់ដំបូង" />
         </div>

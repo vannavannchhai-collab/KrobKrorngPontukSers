@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  Wand2,
   BookOpen,
   CalendarCheck,
   ChevronDown,
@@ -56,6 +57,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
   {
     title: "រដ្ឋបាល",
     items: [
+      { to: "/setup", label: "រៀបចំប្រព័ន្ធ", icon: Wand2, adminOnly: true },
       { to: "/teachers", label: "គ្រូ និងគណនី", icon: UserCog, adminOnly: true },
       { to: "/settings", label: "ការកំណត់", icon: Settings, adminOnly: true },
       { to: "/audit", label: "កំណត់ត្រាប្រព័ន្ធ", icon: ScrollText, adminOnly: true },
@@ -72,6 +74,7 @@ const TITLES: Record<string, { title: string; crumb: string }> = {
   "/classes": { title: "ថ្នាក់រៀន", crumb: "ការសិក្សា" },
   "/subjects": { title: "មុខវិជ្ជា", crumb: "ការសិក្សា" },
   "/teachers": { title: "គ្រូបង្រៀន និងគណនី", crumb: "រដ្ឋបាល" },
+  "/setup": { title: "រៀបចំប្រព័ន្ធដំបូង", crumb: "រដ្ឋបាល" },
   "/settings": { title: "ការកំណត់ប្រព័ន្ធ", crumb: "រដ្ឋបាល" },
   "/audit": { title: "កំណត់ត្រាប្រព័ន្ធ", crumb: "រដ្ឋបាល" },
 };
@@ -182,6 +185,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </p>
           </div>
         </div>
+        <p className="px-2 pb-1 text-center text-[9.5px] leading-relaxed text-ink-600">
+          © {new Date().getFullYear()} វណ្ណា វណ្ណឆៃ · រក្សាសិទ្ធិគ្រប់យ៉ាង
+        </p>
       </div>
     </div>
   );
@@ -248,7 +254,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                   <div className="absolute right-0 mt-2 w-60 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-pop animate-slide-up">
                     <div className="border-b border-ink-100 px-4 py-3">
                       <p className="truncate text-sm font-semibold text-ink-900">{user?.name}</p>
-                      <p className="truncate text-xs text-ink-500">@{user?.username}</p>
+                      <p className="truncate text-xs text-ink-500">{user?.email ?? `@${user?.username}`}</p>
                       <span className="badge mt-2 bg-brand-50 text-brand-700">
                         <ShieldCheck size={11} />
                         {user?.role === "admin" ? "អ្នកគ្រប់គ្រង" : "គ្រូបង្រៀន"}
@@ -281,8 +287,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
         <main className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6">{children}</main>
 
-        <footer className="mx-auto mt-4 max-w-[1600px] px-4 pb-8 text-center text-[11px] text-ink-400 no-print sm:px-6">
-          © {new Date().getFullYear()} {meta?.settings.school_name ?? "វិទ្យាល័យ"} — ប្រព័ន្ធគ្រប់គ្រងពិន្ទុសិស្ស v1.0
+        <footer className="mx-auto mt-4 max-w-[1600px] px-4 pb-8 text-center text-[11px] leading-relaxed text-ink-400 no-print sm:px-6">
+          <p>
+            {meta?.settings.school_name ? `${meta.settings.school_name} · ` : ""}
+            ប្រព័ន្ធគ្រប់គ្រងពិន្ទុសិស្ស v1.0
+          </p>
+          <p className="mt-1">
+            © {new Date().getFullYear()} រក្សាសិទ្ធិគ្រប់យ៉ាងដោយ{" "}
+            <span className="font-semibold text-ink-600">វណ្ណា វណ្ណឆៃ</span>
+          </p>
         </footer>
       </div>
 

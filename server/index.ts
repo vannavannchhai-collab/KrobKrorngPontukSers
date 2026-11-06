@@ -3,7 +3,6 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { initSchema } from "./db.js";
-import { seedDatabase } from "./seed.js";
 import { HttpError } from "./util.js";
 
 import authRoutes from "./routes/auth.js";
@@ -20,7 +19,6 @@ const ROOT = path.resolve(here, "..");
 const PORT = Number(process.env.PORT ?? 4173);
 
 initSchema();
-seedDatabase();
 
 const app = express();
 app.disable("x-powered-by");

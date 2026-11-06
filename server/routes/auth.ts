@@ -34,15 +34,19 @@ function registerFailure(key: string) {
 router.post(
   "/login",
   asyncHandler(async (req, res) => {
-    const username = String(req.body?.username ?? "").trim().toLowerCase();
+    const username = String(req.body?.username ?? req.body?.email ?? "")
+      .trim()
+      .toLowerCase();
     const password = String(req.body?.password ?? "");
-    if (!username || !password) throw new HttpError(400, "សូមបញ្ចូលឈ្មោះអ្នកប្រើ និងលេខសម្ងាត់");
+    if (!username || !password) throw new HttpError(400, "សូមបញ្ចូលអ៊ីមែល (Gmail) និងលេខសម្ងាត់");
     const attemptKey = `${req.ip ?? "unknown"}|${username}`;
     if (tooManyAttempts(attemptKey)) {
       throw new HttpError(429, "ព្យាយាមចូលច្រើនដងពេក សូមរង់ចាំ ១០ នាទី ហើយព្យាយាមម្ដងទៀត");
     }
 
-    const user = db.prepare("SELECT * FROM users WHERE lower(username) = ?").get(username) as
+    const user = db
+      .prepare("SELECT * FROM users WHERE lower(username) = ? OR lower(email) = ? LIMIT 1")
+      .get(username, username) as
       | {
           id: number;
           username: string;
@@ -56,7 +60,7 @@ router.post(
 
     if (!user || !verifyPassword(password, user.password_hash)) {
       registerFailure(attemptKey);
-      throw new HttpError(401, "ឈ្មោះអ្នកប្រើ ឬលេខសម្ងាត់មិនត្រឹមត្រូវ");
+      throw new HttpError(401, "អ៊ីមែល ឬលេខសម្ងាត់មិនត្រឹមត្រូវ");
     }
     attempts.delete(attemptKey);
     if (!user.is_active) throw new HttpError(403, "គណនីនេះត្រូវបានបិទ សូមទាក់ទងអ្នកគ្រប់គ្រង");
@@ -70,12 +74,76 @@ router.post(
       subject_id: user.subject_id,
     };
     audit(payload, "login", "user", user.id, `${user.name} បានចូលប្រើប្រាស់`, req.ip);
-    res.json({ token: signToken(payload), user: payload });
+    res.json({ token: signToken(payload), user: { ...payload, email: (user as any).email ?? null } });
+  }),
+);
+
+/* ------------------------- real account registration ---------------------- */
+
+const GMAIL_RE = /^[a-z0-9](?:[a-z0-9._%+-]{1,62})@(?:gmail\.com|googlemail\.com)$/;
+
+router.get("/registration-status", (_req, res) => {
+  const total = (db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
+  const settings = db.prepare("SELECT value FROM settings WHERE key = 'allow_registration'").get() as
+    | { value: string }
+    | undefined;
+  res.json({
+    has_users: total > 0,
+    allow_registration: (settings?.value ?? "1") !== "0",
+    users: total,
+  });
+});
+
+router.post(
+  "/register",
+  asyncHandler(async (req, res) => {
+    const name = String(req.body?.name ?? "").trim();
+    const email = String(req.body?.email ?? "").trim().toLowerCase();
+    const password = String(req.body?.password ?? "");
+
+    if (name.length < 2) throw new HttpError(400, "សូមបញ្ចូលឈ្មោះពេញរបស់អ្នក");
+    if (!GMAIL_RE.test(email)) {
+      throw new HttpError(400, "សូមប្រើអាសយដ្ឋាន Gmail ពិតប្រាកដ (ឧ. yourname@gmail.com)");
+    }
+    if (password.length < 8) throw new HttpError(400, "លេខសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ");
+
+    const total = (db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
+    const allowRow = db.prepare("SELECT value FROM settings WHERE key = 'allow_registration'").get() as
+      | { value: string }
+      | undefined;
+    if (total > 0 && (allowRow?.value ?? "1") === "0") {
+      throw new HttpError(403, "ការចុះឈ្មោះគណនីថ្មីត្រូវបានបិទ។ សូមទាក់ទងអ្នកគ្រប់គ្រងប្រព័ន្ធ។");
+    }
+
+    const existing = db
+      .prepare("SELECT 1 FROM users WHERE lower(email) = ? OR lower(username) = ?")
+      .get(email, email);
+    if (existing) throw new HttpError(409, "អ៊ីមែលនេះបានចុះឈ្មោះរួចហើយ សូមចូលប្រើជំនួសវិញ");
+
+    const role: "admin" | "teacher" = total === 0 ? "admin" : "teacher";
+    const info = db
+      .prepare(
+        `INSERT INTO users (username, password_hash, name, role, email, is_active)
+         VALUES (?,?,?,?,?,1)`,
+      )
+      .run(email, hashPassword(password), name, role, email);
+    const userId = Number(info.lastInsertRowid);
+
+    const payload: AuthUser = { id: userId, username: email, name, role, subject_id: null };
+    audit(payload, "create", "user", userId, `ចុះឈ្មោះគណនីថ្មីដោយ Gmail: ${email}`, req.ip);
+    res.status(201).json({
+      token: signToken(payload),
+      user: { ...payload, email },
+      first_account: total === 0,
+    });
   }),
 );
 
 router.get("/me", authRequired, (req, res) => {
-  res.json({ user: req.user });
+  const row = db.prepare("SELECT email FROM users WHERE id = ?").get(req.user!.id) as
+    | { email: string | null }
+    | undefined;
+  res.json({ user: { ...req.user, email: row?.email ?? null } });
 });
 
 router.post(

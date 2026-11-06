@@ -52,9 +52,12 @@ export function currentTermId(): number | null {
     | { id: number }
     | undefined;
   if (row) return row.id;
-  const fallback = db.prepare("SELECT id FROM terms ORDER BY id DESC LIMIT 1").get() as
-    | { id: number }
-    | undefined;
+  const fallback = db
+    .prepare(
+      `SELECT t.id FROM terms t JOIN academic_years y ON y.id = t.academic_year_id
+        ORDER BY y.name DESC, t.semester ASC LIMIT 1`,
+    )
+    .get() as { id: number } | undefined;
   return fallback?.id ?? null;
 }
 
