@@ -186,12 +186,9 @@ router.get(
     if (!email || !emailVerified) return fail(res, "unverified");
     if (!GMAIL_RE.test(email)) return fail(res, "gmail_required");
 
-    // 3. Sign in an existing account or create one (respecting registration policy).
+    // 3. Sign in an existing account. Public sign-up is disabled, so unknown
+    //    Gmail addresses are rejected — except the very first account (owner).
     const total = (db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
-    const allowRow = db.prepare("SELECT value FROM settings WHERE key = 'allow_registration'").get() as
-      | { value: string }
-      | undefined;
-    const registrationOpen = (allowRow?.value ?? "1") !== "0";
 
     let user = db
       .prepare("SELECT * FROM users WHERE lower(email) = ? OR lower(username) = ? LIMIT 1")
@@ -215,9 +212,9 @@ router.get(
         "UPDATE users SET last_login_at = datetime('now'), google_sub = ?, email = COALESCE(email, ?) WHERE id = ?",
       ).run(googleSub, email, user.id);
     } else {
-      if (total > 0 && !registrationOpen) return fail(res, "closed");
+      if (total > 0) return fail(res, "not_registered");
       const displayName = String(profile.name ?? "").trim() || email.split("@")[0];
-      const role: "admin" | "teacher" = total === 0 ? "admin" : "teacher";
+      const role: "admin" | "teacher" = "admin"; // owner bootstrap only
       // Random local password: the account can only be accessed through Google
       // until an administrator sets a password for it.
       const info = db

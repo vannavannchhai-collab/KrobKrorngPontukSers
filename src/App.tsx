@@ -4,7 +4,7 @@ import { useAuth } from "./lib/auth";
 import { AppLayout } from "./components/AppLayout";
 import { PageLoader } from "./components/ui";
 import LoginPage from "./pages/LoginPage";
-import RegisterPage from "./pages/RegisterPage";
+import FirstRunPage from "./pages/FirstRunPage";
 import GoogleCallbackPage from "./pages/GoogleCallbackPage";
 import SetupPage from "./pages/SetupPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -40,7 +40,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/first-run" element={<FirstRunPage />} />
+      <Route path="/register" element={<Navigate to="/login" replace />} />
       <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
       <Route
         element={
