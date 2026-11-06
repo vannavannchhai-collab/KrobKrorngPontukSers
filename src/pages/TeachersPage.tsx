@@ -284,8 +284,14 @@ export default function TeachersPage() {
           <Field label="ទូរស័ព្ទ">
             <input className="input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           </Field>
-          <Field label="អ៊ីមែល">
-            <input className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          <Field label="អ៊ីមែល (Gmail)" hint="ប្រើសម្រាប់ចូលប្រព័ន្ធ និងទំនាក់ទំនង">
+            <input
+              className="input"
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="name@gmail.com"
+            />
           </Field>
           <Field label="កាលបរិច្ឆេទចូលបម្រើ">
             <input type="date" className="input" value={form.hire_date} onChange={(e) => setForm({ ...form, hire_date: e.target.value })} />

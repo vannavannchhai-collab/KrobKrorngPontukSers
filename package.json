@@ -10,8 +10,7 @@
     "start": "tsx server/index.ts",
     "serve": "npm run build && tsx server/index.ts",
     "typecheck": "tsc --noEmit",
-    "seed": "tsx server/seed.ts",
-    "reset": "rm -f data/school.db && npm run seed"
+    "reset": "rm -f data/school.db data/school.db-shm data/school.db-wal"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.7",

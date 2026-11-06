@@ -62,6 +62,23 @@ export default function ResultsPage() {
     [data],
   );
 
+  if (meta && (meta.classes.length === 0 || meta.terms.length === 0)) {
+    return (
+      <div className="card animate-fade-in">
+        <EmptyState
+          icon={BarChart3}
+          title="មិនទាន់មានទិន្នន័យគ្រប់គ្រាន់"
+          description="ត្រូវការថ្នាក់រៀន និងឆមាសសិក្សា ដើម្បីបង្ហាញលទ្ធផល។ សូមរៀបចំប្រព័ន្ធជាមុន។"
+          action={
+            <Link to="/setup" className="btn-primary btn-sm">
+              រៀបចំប្រព័ន្ធ
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
   if (isLoading || !data) return <PageLoader label="កំពុងគណនាលទ្ធផល…" />;
 
   const exportCsv = () =>

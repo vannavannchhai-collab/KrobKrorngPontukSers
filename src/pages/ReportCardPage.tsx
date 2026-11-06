@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft, FileText, Printer } from "lucide-react";
 import { api } from "../lib/api";
 import { useMeta } from "../lib/useMeta";
 import type { GradeInfo, StudentResult, Term } from "../lib/types";
-import { PageLoader } from "../components/ui";
+import { EmptyState, PageLoader } from "../components/ui";
 import { cn, formatDate, formatNumber, formatScore, genderLabel } from "../lib/utils";
 
 interface ReportResponse {
@@ -67,6 +67,23 @@ export default function ReportCardPage() {
     queryFn: () => api<ReportResponse>(`/results/student/${id}`, { query: { term_id: activeTerm } }),
     enabled: !!id && !!activeTerm,
   });
+
+  if (meta && meta.terms.length === 0) {
+    return (
+      <div className="card">
+        <EmptyState
+          icon={FileText}
+          title="មិនទាន់មានឆមាសសិក្សា"
+          description="សូមបង្កើតឆ្នាំសិក្សា និងបញ្ចូលពិន្ទុជាមុន ទើបអាចបង្កើតសៀវភៅពិន្ទុបាន។"
+          action={
+            <Link to="/dashboard" className="btn-secondary btn-sm">
+              ត្រឡប់ទៅផ្ទាំងគ្រប់គ្រង
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
 
   if (isLoading || !data) return <PageLoader label="កំពុងបង្កើតសៀវភៅពិន្ទុ…" />;
 

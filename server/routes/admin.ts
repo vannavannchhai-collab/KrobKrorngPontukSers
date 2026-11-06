@@ -16,6 +16,9 @@ router.post(
     const b = req.body ?? {};
     if (!b.username || !b.name || !b.password) throw new HttpError(400, "សូមបញ្ចូលឈ្មោះ ឈ្មោះអ្នកប្រើ និងលេខសម្ងាត់");
     if (String(b.password).length < 6) throw new HttpError(400, "លេខសម្ងាត់ត្រូវមានយ៉ាងតិច ៦ តួអក្សរ");
+    if (b.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(b.email))) {
+      throw new HttpError(400, "អ៊ីមែលមិនត្រឹមត្រូវ");
+    }
     try {
       const info = db
         .prepare(
@@ -129,6 +132,7 @@ router.put(
       "max_score",
       "attendance_absent_limit",
       "locale",
+      "allow_registration",
     ];
     for (const key of simpleKeys) {
       if (b[key] !== undefined) setSetting(key, String(b[key]));
@@ -161,12 +165,25 @@ router.post(
         .prepare("INSERT INTO academic_years (name, start_date, end_date) VALUES (?,?,?)")
         .run(String(name).trim(), start_date ?? null, end_date ?? null);
       const yearId = Number(info.lastInsertRowid);
-      db.prepare(
-        "INSERT INTO terms (academic_year_id, name, semester, start_date, end_date) VALUES (?,?,?,?,?)",
-      ).run(yearId, "ឆមាសទី១", 1, start_date ?? null, null);
+      const hasCurrentYear = db
+        .prepare("SELECT 1 FROM academic_years WHERE is_current = 1")
+        .get();
+      if (!hasCurrentYear) {
+        db.prepare("UPDATE academic_years SET is_current = 1 WHERE id = ?").run(yearId);
+      }
+      const term1 = Number(
+        db
+          .prepare(
+            "INSERT INTO terms (academic_year_id, name, semester, start_date, end_date) VALUES (?,?,?,?,?)",
+          )
+          .run(yearId, "ឆមាសទី១", 1, start_date ?? null, null).lastInsertRowid,
+      );
       db.prepare(
         "INSERT INTO terms (academic_year_id, name, semester, start_date, end_date) VALUES (?,?,?,?,?)",
       ).run(yearId, "ឆមាសទី២", 2, null, end_date ?? null);
+      if (!db.prepare("SELECT 1 FROM terms WHERE is_current = 1").get()) {
+        db.prepare("UPDATE terms SET is_current = 1 WHERE id = ?").run(term1);
+      }
       audit(req.user, "create", "academic_year", yearId, `បង្កើតឆ្នាំសិក្សា ${name}`, req.ip);
       res.status(201).json({ id: yearId });
     } catch (e: any) {
@@ -185,7 +202,21 @@ router.put(
     db.prepare(
       "UPDATE academic_years SET name=COALESCE(?,name), start_date=?, end_date=?, is_current=COALESCE(?,is_current) WHERE id=?",
     ).run(name ?? null, start_date ?? null, end_date ?? null, is_current === undefined ? null : is_current ? 1 : 0, id);
-    if (is_current) db.prepare("UPDATE academic_years SET is_current = 0 WHERE id <> ?").run(id);
+    if (is_current) {
+      db.prepare("UPDATE academic_years SET is_current = 0 WHERE id <> ?").run(id);
+      const hasCurrentTermOfYear = db
+        .prepare("SELECT 1 FROM terms WHERE academic_year_id = ? AND is_current = 1")
+        .get(id);
+      if (!hasCurrentTermOfYear) {
+        const firstTerm = db
+          .prepare("SELECT id FROM terms WHERE academic_year_id = ? ORDER BY semester LIMIT 1")
+          .get(id) as { id: number } | undefined;
+        if (firstTerm) {
+          db.prepare("UPDATE terms SET is_current = 0").run();
+          db.prepare("UPDATE terms SET is_current = 1 WHERE id = ?").run(firstTerm.id);
+        }
+      }
+    }
     audit(req.user, "update", "academic_year", id, "កែប្រែឆ្នាំសិក្សា", req.ip);
     res.json({ ok: true });
   }),
@@ -228,6 +259,50 @@ router.put(
     );
     audit(req.user, "update", "score_type", id, "កែប្រែប្រភេទពិន្ទុ", req.ip);
     res.json({ ok: true });
+  }),
+);
+
+/* ---------------------------- starter subjects ---------------------------- */
+
+const STANDARD_SUBJECTS = [
+  { code: "KHM", name_kh: "ខ្មែរអក្សរ", name_en: "Khmer Literature", credits: 2, color: "#ef4444" },
+  { code: "MATH", name_kh: "គណិតវិទ្យា", name_en: "Mathematics", credits: 2, color: "#3b82f6" },
+  { code: "PHY", name_kh: "រូបវិទ្យា", name_en: "Physics", credits: 1.5, color: "#8b5cf6" },
+  { code: "CHEM", name_kh: "គីមីវិទ្យា", name_en: "Chemistry", credits: 1.5, color: "#14b8a6" },
+  { code: "BIO", name_kh: "ជីវវិទ្យា", name_en: "Biology", credits: 1.5, color: "#22c55e" },
+  { code: "EARTH", name_kh: "ផែនដីវិទ្យា", name_en: "Earth Science", credits: 1, color: "#a16207" },
+  { code: "HIST", name_kh: "ប្រវត្តិវិទ្យា", name_en: "History", credits: 1, color: "#f59e0b" },
+  { code: "GEO", name_kh: "ភូមិវិទ្យា", name_en: "Geography", credits: 1, color: "#0ea5e9" },
+  { code: "CIVIC", name_kh: "សីលធម៌-ពលរដ្ឋវិទ្យា", name_en: "Moral & Civics", credits: 1, color: "#f97316" },
+  { code: "ENG", name_kh: "ភាសាអង់គ្លេស", name_en: "English", credits: 1.5, color: "#6366f1" },
+  { code: "ICT", name_kh: "ព័ត៌មានវិទ្យា", name_en: "Information Technology", credits: 1, color: "#06b6d4" },
+  { code: "PE", name_kh: "អប់រំកាយ", name_en: "Physical Education", credits: 1, color: "#84cc16" },
+];
+
+router.post(
+  "/standard-subjects",
+  adminOnly,
+  asyncHandler(async (req, res) => {
+    const stmt = db.prepare(
+      `INSERT OR IGNORE INTO subjects (code, name_kh, name_en, credits, color, is_active)
+       VALUES (?,?,?,?,?,1)`,
+    );
+    let added = 0;
+    db.exec("BEGIN");
+    try {
+      for (const s of STANDARD_SUBJECTS) {
+        const before = (db.prepare("SELECT COUNT(*) AS c FROM subjects").get() as any).c;
+        stmt.run(s.code, s.name_kh, s.name_en, s.credits, s.color);
+        const after = (db.prepare("SELECT COUNT(*) AS c FROM subjects").get() as any).c;
+        if (after > before) added++;
+      }
+      db.exec("COMMIT");
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    }
+    audit(req.user, "create", "subject", null, `បន្ថែមមុខវិជ្ជាស្តង់ដារ ${added}`, req.ip);
+    res.json({ ok: true, added });
   }),
 );
 

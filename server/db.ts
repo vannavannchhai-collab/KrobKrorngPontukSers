@@ -164,22 +164,25 @@ export function initSchema() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
+      ON users(lower(email)) WHERE email IS NOT NULL AND email <> '';
     CREATE INDEX IF NOT EXISTS idx_students_class ON students(class_id);
     CREATE INDEX IF NOT EXISTS idx_scores_lookup ON scores(term_id, subject_id, student_id);
     CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date, class_id);
     CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
   `);
   seedSettings();
+  seedScoreTypes();
 }
 
 const DEFAULT_SETTINGS: Record<string, string> = {
-  school_name: "វិទ្យាល័យព្រះអង្គឌួង",
-  school_name_en: "Preah Ang Duong High School",
-  school_address: "ភូមិសាលាកំរើក សង្កាត់សាលាកំរើក ក្រុងសៀមរាប ខេត្តសៀមរាប",
-  school_phone: "012 345 678",
-  school_email: "info@padhs.edu.kh",
-  director_name: "លោកនាយក សុខ សំណាង",
-  motto: "ចំណេះដឹង គឺជាកម្លាំង",
+  school_name: "",
+  school_name_en: "",
+  school_address: "",
+  school_phone: "",
+  school_email: "",
+  director_name: "",
+  motto: "",
   pass_mark: "50",
   max_score: "100",
   grade_scale: JSON.stringify([
@@ -190,16 +193,29 @@ const DEFAULT_SETTINGS: Record<string, string> = {
     { grade: "E", min: 50, remark: "ខ្សោយ" },
     { grade: "F", min: 0, remark: "ធ្លាក់" },
   ]),
-  score_weights: JSON.stringify({ quiz: 10, monthly: 20, midterm: 30, final: 40 }),
-  currency: "USD",
   locale: "km-KH",
   attendance_absent_limit: "20",
-  school_year_start: "2025-10-01",
+  allow_registration: "1",
 };
+
+/** Default assessment types — system configuration (not demo data). */
+const DEFAULT_SCORE_TYPES = [
+  { code: "quiz", name_kh: "ការងារផ្ទះ/តេស្តខ្លី", name_en: "Assignment", weight: 10, sort: 1 },
+  { code: "monthly", name_kh: "ពិន្ទុប្រចាំខែ", name_en: "Monthly Test", weight: 20, sort: 2 },
+  { code: "midterm", name_kh: "ពិន្ទុពាក់កណ្ដាលឆមាស", name_en: "Midterm", weight: 30, sort: 3 },
+  { code: "final", name_kh: "ពិន្ទុបញ្ចប់ឆមាស", name_en: "Final Exam", weight: 40, sort: 4 },
+];
 
 function seedSettings() {
   const stmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) stmt.run(k, v);
+}
+
+function seedScoreTypes() {
+  const stmt = db.prepare(
+    `INSERT OR IGNORE INTO score_types (code, name_kh, name_en, weight, sort) VALUES (?,?,?,?,?)`,
+  );
+  for (const t of DEFAULT_SCORE_TYPES) stmt.run(t.code, t.name_kh, t.name_en, t.weight, t.sort);
 }
 
 export function getSettings(): Record<string, string> {

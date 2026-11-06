@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, audit, getSettings } from "../db.js";
 import { adminOnly, authRequired } from "../auth.js";
 import { HttpError, asyncHandler } from "../util.js";
-import { getGradeScale, getScoreTypes } from "../compute.js";
+import { currentTermId, getGradeScale, getScoreTypes } from "../compute.js";
 
 const router = Router();
 router.use(authRequired);
@@ -38,8 +38,17 @@ router.get(
       .all();
     const scoreTypes = getScoreTypes();
     const settings = getSettings();
-    const currentYear = db.prepare("SELECT * FROM academic_years WHERE is_current = 1").get();
-    const currentTerm = db.prepare("SELECT * FROM terms WHERE is_current = 1").get();
+    const currentTerm = db.prepare("SELECT * FROM terms WHERE is_current = 1").get() ??
+      (currentTermId()
+        ? db.prepare("SELECT * FROM terms WHERE id = ?").get(currentTermId())
+        : undefined);
+    const currentYear =
+      (currentTerm as { academic_year_id?: number } | undefined)?.academic_year_id
+        ? db
+            .prepare("SELECT * FROM academic_years WHERE id = ?")
+            .get((currentTerm as { academic_year_id: number }).academic_year_id)
+        : db.prepare("SELECT * FROM academic_years WHERE is_current = 1").get() ??
+          db.prepare("SELECT * FROM academic_years ORDER BY name DESC LIMIT 1").get();
 
     res.json({
       years,

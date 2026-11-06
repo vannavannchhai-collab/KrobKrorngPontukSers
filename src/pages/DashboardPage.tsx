@@ -78,6 +78,29 @@ export default function DashboardPage() {
     return "សាយណ្ហសួស្តី";
   }, []);
 
+  if (meta && meta.terms.length === 0) {
+    return (
+      <div className="card animate-fade-in">
+        <EmptyState
+          icon={GraduationCap}
+          title="ប្រព័ន្ធនេះមិនទាន់មានទិន្នន័យ"
+          description={
+            user?.role === "admin"
+              ? "សូមរៀបចំព័ត៌មានសាលា ឆ្នាំសិក្សា មុខវិជ្ជា និងថ្នាក់រៀន ដើម្បីចាប់ផ្ដើមប្រើប្រាស់។"
+              : "សូមរង់ចាំអ្នកគ្រប់គ្រងរៀបចំឆ្នាំសិក្សា និងចាត់តាំងថ្នាក់ឱ្យអ្នក។"
+          }
+          action={
+            user?.role === "admin" ? (
+              <Link to="/setup" className="btn-primary btn-sm">
+                ចាប់ផ្ដើមរៀបចំប្រព័ន្ធ
+              </Link>
+            ) : undefined
+          }
+        />
+      </div>
+    );
+  }
+
   if (isLoading || !data) return <PageLoader label="កំពុងប្រមូលទិន្នន័យសិក្សា…" />;
 
   const trendData = data.trend.map((t) => ({ ...t, label: `${t.label} ${t.year.slice(0, 4)}` }));
