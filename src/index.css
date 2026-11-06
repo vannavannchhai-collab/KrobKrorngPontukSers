@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --ring: 33 67 225;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-ink-50 text-ink-900 font-khmer antialiased;
+    font-feature-settings: "ss01";
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-semibold tracking-tight text-ink-950;
+  }
+
+  ::selection {
+    @apply bg-brand-200 text-brand-950;
+  }
+
+  /* Slim, unobtrusive scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: theme("colors.ink.300") transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  *::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-ink-300;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500/40 ring-offset-1 ring-offset-white;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-ink-200/80 bg-white shadow-card;
+  }
+
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium
+      transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700 active:scale-[.985];
+  }
+  .btn-secondary {
+    @apply btn border border-ink-200 bg-white text-ink-700 hover:border-ink-300 hover:bg-ink-50 active:scale-[.985];
+  }
+  .btn-ghost {
+    @apply btn text-ink-600 hover:bg-ink-100 hover:text-ink-900;
+  }
+  .btn-danger {
+    @apply btn bg-rose-600 text-white hover:bg-rose-700 active:scale-[.985];
+  }
+  .btn-sm {
+    @apply px-2.5 py-1.5 text-[13px] rounded-lg;
+  }
+  .btn-icon {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-500 transition
+      hover:bg-ink-100 hover:text-ink-900;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900
+      placeholder:text-ink-400 transition focus:border-brand-400 focus:outline-none
+      focus:ring-4 focus:ring-brand-500/10 disabled:bg-ink-50 disabled:text-ink-400;
+  }
+  .label {
+    @apply mb-1.5 block text-[13px] font-medium text-ink-700;
+  }
+  .hint {
+    @apply mt-1 text-xs text-ink-500;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold leading-none;
+  }
+
+  .th {
+    @apply whitespace-nowrap px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-500;
+  }
+  .td {
+    @apply whitespace-nowrap px-3 py-2.5 text-sm text-ink-700;
+  }
+  .table-row {
+    @apply border-t border-ink-100 transition-colors hover:bg-brand-50/40;
+  }
+
+  .nav-link {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-medium text-ink-300
+      transition-colors hover:bg-white/10 hover:text-white;
+  }
+  .nav-link-active {
+    @apply bg-white/10 text-white shadow-inner;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5
+      text-xs font-medium text-ink-600 transition hover:border-ink-300 hover:bg-ink-50;
+  }
+  .chip-active {
+    @apply border-brand-200 bg-brand-50 text-brand-700 hover:border-brand-300 hover:bg-brand-100;
+  }
+
+  .skeleton {
+    @apply animate-pulse rounded-lg bg-ink-200/70;
+  }
+
+  .stat-spark {
+    @apply absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-brand-500 to-brand-300;
+  }
+}
+
+/* --------------------------------- print --------------------------------- */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm 10mm;
+  }
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 11px;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-area {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  .print-break {
+    page-break-after: always;
+  }
+  .card {
+    border: none !important;
+    box-shadow: none !important;
+  }
+  table {
+    page-break-inside: auto;
+  }
+  tr {
+    page-break-inside: avoid;
+  }
+}
