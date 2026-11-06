@@ -1,0 +1,9 @@
+node_modules
+dist
+data/*.db
+data/.jwt-secret
+data/*.db-shm
+data/*.db-wal
+.env
+.DS_Store
+*.log
