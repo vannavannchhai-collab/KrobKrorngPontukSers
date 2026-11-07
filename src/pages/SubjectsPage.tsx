@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
-import { useAuth } from "../lib/auth";
+import { useSession } from "../lib/session";
 import type { Subject } from "../lib/types";
 import { ConfirmDialog, EmptyState, Field, Modal, Spinner, TableSkeleton } from "../components/ui";
 import { useToast } from "../components/Toast";
@@ -11,7 +11,7 @@ import { cn } from "../lib/utils";
 const COLORS = ["#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6", "#6366f1", "#8b5cf6", "#d946ef", "#ec4899"];
 
 export default function SubjectsPage() {
-  const { user } = useAuth();
+  const { user } = useSession();
   const qc = useQueryClient();
   const toast = useToast();
   const isAdmin = user?.role === "admin";

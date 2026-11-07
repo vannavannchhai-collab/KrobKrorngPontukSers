@@ -68,9 +68,9 @@ export default function ResultsPage() {
         <EmptyState
           icon={BarChart3}
           title="មិនទាន់មានទិន្នន័យគ្រប់គ្រាន់"
-          description="ត្រូវការថ្នាក់រៀន និងឆមាសសិក្សា ដើម្បីបង្ហាញលទ្ធផល។ សូមរៀបចំប្រព័ន្ធជាមុន។"
+          description="ត្រូវការថ្នាក់រៀន និងឆមាសសិក្សា ដើម្បីបង្ហាញលទ្ធផល។ សូមបង្កើតឆ្នាំសិក្សា និងថ្នាក់រៀនជាមុន។"
           action={
-            <Link to="/setup" className="btn-primary btn-sm">
+            <Link to="/settings" className="btn-primary btn-sm">
               រៀបចំប្រព័ន្ធ
             </Link>
           }

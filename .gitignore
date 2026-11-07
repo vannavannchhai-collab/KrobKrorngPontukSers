@@ -1,9 +1,6 @@
 node_modules
 dist
-data/*.db
-data/.jwt-secret
-data/*.db-shm
-data/*.db-wal
 .env
+.env.local
 .DS_Store
 *.log

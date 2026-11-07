@@ -1,12 +1,5 @@
-import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
-import type { ReactNode } from "react";
-import { useAuth } from "./lib/auth";
+import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
-import { PageLoader } from "./components/ui";
-import LoginPage from "./pages/LoginPage";
-import FirstRunPage from "./pages/FirstRunPage";
-import GoogleCallbackPage from "./pages/GoogleCallbackPage";
-import SetupPage from "./pages/SetupPage";
 import DashboardPage from "./pages/DashboardPage";
 import StudentsPage from "./pages/StudentsPage";
 import StudentDetailPage from "./pages/StudentDetailPage";
@@ -22,46 +15,19 @@ import SettingsPage from "./pages/SettingsPage";
 import AuditPage from "./pages/AuditPage";
 import NotFoundPage from "./pages/NotFoundPage";
 
-function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
-  const location = useLocation();
-  if (loading) return <PageLoader label="កំពុងផ្ទៀងផ្ទាត់គណនី…" />;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
-  return <>{children}</>;
-}
-
-function RequireAdmin({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
-  if (user?.role !== "admin") return <Navigate to="/dashboard" replace />;
-  return <>{children}</>;
-}
-
+/** No login: the whole app runs in the browser with local data. */
 export default function App() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/first-run" element={<FirstRunPage />} />
-      <Route path="/register" element={<Navigate to="/login" replace />} />
-      <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
       <Route
         element={
-          <RequireAuth>
-            <AppLayout>
-              <Outlet />
-            </AppLayout>
-          </RequireAuth>
+          <AppLayout>
+            <Outlet />
+          </AppLayout>
         }
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route
-          path="/setup"
-          element={
-            <RequireAdmin>
-              <SetupPage />
-            </RequireAdmin>
-          }
-        />
         <Route path="/students" element={<StudentsPage />} />
         <Route path="/students/:id" element={<StudentDetailPage />} />
         <Route path="/scores" element={<ScoreEntryPage />} />
@@ -71,30 +37,9 @@ export default function App() {
         <Route path="/attendance" element={<AttendancePage />} />
         <Route path="/classes" element={<ClassesPage />} />
         <Route path="/subjects" element={<SubjectsPage />} />
-        <Route
-          path="/teachers"
-          element={
-            <RequireAdmin>
-              <TeachersPage />
-            </RequireAdmin>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <RequireAdmin>
-              <SettingsPage />
-            </RequireAdmin>
-          }
-        />
-        <Route
-          path="/audit"
-          element={
-            <RequireAdmin>
-              <AuditPage />
-            </RequireAdmin>
-          }
-        />
+        <Route path="/teachers" element={<TeachersPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/audit" element={<AuditPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

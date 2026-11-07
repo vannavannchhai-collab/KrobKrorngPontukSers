@@ -25,7 +25,7 @@ import {
 } from "recharts";
 import { api } from "../lib/api";
 import { useMeta } from "../lib/useMeta";
-import { useAuth } from "../lib/auth";
+import { useSession } from "../lib/session";
 import type { Student, StudentResult, Term } from "../lib/types";
 import { Avatar, EmptyState, GradeBadge, PageLoader, SectionCard, StatCard, StatusBadge } from "../components/ui";
 import { StudentFormModal } from "../components/StudentFormModal";
@@ -61,7 +61,7 @@ interface DetailResponse {
 export default function StudentDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user } = useSession();
   const { data: meta } = useMeta();
   const [termId, setTermId] = useState<number | null>(null);
   const [editOpen, setEditOpen] = useState(false);

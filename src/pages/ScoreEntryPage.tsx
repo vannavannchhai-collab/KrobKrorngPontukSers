@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useMeta } from "../lib/useMeta";
-import { useAuth } from "../lib/auth";
+import { useSession } from "../lib/session";
 import type { ScoreType } from "../lib/types";
 import { EmptyState, PageLoader, Spinner } from "../components/ui";
 import { useToast } from "../components/Toast";
@@ -37,7 +37,7 @@ interface ScoreGridResponse {
 const keyOf = (studentId: number, code: string) => `${studentId}|${code}`;
 
 export default function ScoreEntryPage() {
-  const { user } = useAuth();
+  const { user } = useSession();
   const { data: meta } = useMeta();
   const toast = useToast();
   const qc = useQueryClient();
@@ -270,7 +270,7 @@ export default function ScoreEntryPage() {
           }
           action={
             user?.role === "admin" ? (
-              <Link to="/setup" className="btn-primary btn-sm">
+              <Link to="/settings" className="btn-primary btn-sm">
                 រៀបចំឆ្នាំសិក្សា
               </Link>
             ) : undefined

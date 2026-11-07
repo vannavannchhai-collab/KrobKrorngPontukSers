@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useMeta } from "../lib/useMeta";
-import { useAuth } from "../lib/auth";
+import { useSession } from "../lib/session";
 import type { ClassRoom, Subject } from "../lib/types";
 import { ConfirmDialog, EmptyState, Field, Modal, PageLoader, Spinner } from "../components/ui";
 import { useToast } from "../components/Toast";
@@ -24,7 +24,7 @@ import { cn } from "../lib/utils";
 type ClassSubject = Subject & { teacher_id: number | null; teacher_name: string | null; assignment_id: number };
 
 export default function ClassesPage() {
-  const { user } = useAuth();
+  const { user } = useSession();
   const { data: meta } = useMeta();
   const qc = useQueryClient();
   const toast = useToast();
@@ -130,10 +130,10 @@ export default function ClassesPage() {
           <EmptyState
             icon={CalendarRange}
             title="មិនទាន់មានឆ្នាំសិក្សា"
-            description="ត្រូវការឆ្នាំសិក្សាមួយ ដើម្បីបង្កើតថ្នាក់រៀន។ សូមរៀបចំប្រព័ន្ធជាមុន។"
+            description="ត្រូវការឆ្នាំសិក្សាមួយ ដើម្បីបង្កើតថ្នាក់រៀន។ សូមបង្កើតឆ្នាំសិក្សានៅទំព័រការកំណត់។"
             action={
               isAdmin ? (
-                <Link to="/setup" className="btn-primary btn-sm">
+                <Link to="/settings" className="btn-primary btn-sm">
                   រៀបចំប្រព័ន្ធ
                 </Link>
               ) : undefined
