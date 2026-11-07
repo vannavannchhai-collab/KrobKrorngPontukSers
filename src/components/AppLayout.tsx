@@ -1,32 +1,24 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState, type ReactNode } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import {
-  Wand2,
   BookOpen,
   CalendarCheck,
-  ChevronDown,
   ClipboardList,
   GraduationCap,
+  HardDrive,
   LayoutDashboard,
-  LogOut,
   Menu,
   School,
   ScrollText,
   Settings,
-  ShieldCheck,
   Users,
   X,
-  KeyRound,
   BarChart3,
   UserCog,
 } from "lucide-react";
-import { useAuth } from "../lib/auth";
+import { useSession } from "../lib/session";
 import { useMeta } from "../lib/useMeta";
 import { cn } from "../lib/utils";
-import { api } from "../lib/api";
-import { Field, Modal, Spinner } from "./ui";
-import { useToast } from "./Toast";
 
 interface NavItem {
   to: string;
@@ -57,8 +49,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
   {
     title: "រដ្ឋបាល",
     items: [
-      { to: "/setup", label: "រៀបចំប្រព័ន្ធ", icon: Wand2, adminOnly: true },
-      { to: "/teachers", label: "គ្រូ និងគណនី", icon: UserCog, adminOnly: true },
+      { to: "/teachers", label: "គ្រូបង្រៀន", icon: UserCog, adminOnly: true },
       { to: "/settings", label: "ការកំណត់", icon: Settings, adminOnly: true },
       { to: "/audit", label: "កំណត់ត្រាប្រព័ន្ធ", icon: ScrollText, adminOnly: true },
     ],
@@ -73,34 +64,20 @@ const TITLES: Record<string, { title: string; crumb: string }> = {
   "/attendance": { title: "វត្តមានសិស្ស", crumb: "ការសិក្សា" },
   "/classes": { title: "ថ្នាក់រៀន", crumb: "ការសិក្សា" },
   "/subjects": { title: "មុខវិជ្ជា", crumb: "ការសិក្សា" },
-  "/teachers": { title: "គ្រូបង្រៀន និងគណនី", crumb: "រដ្ឋបាល" },
-  "/setup": { title: "រៀបចំប្រព័ន្ធដំបូង", crumb: "រដ្ឋបាល" },
+  "/teachers": { title: "គ្រូបង្រៀន", crumb: "រដ្ឋបាល" },
   "/settings": { title: "ការកំណត់ប្រព័ន្ធ", crumb: "រដ្ឋបាល" },
   "/audit": { title: "កំណត់ត្រាប្រព័ន្ធ", crumb: "រដ្ឋបាល" },
 };
 
 export function AppLayout({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user } = useSession();
   const { data: meta } = useMeta();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [pwdOpen, setPwdOpen] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
-  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMobileOpen(false);
-    setMenuOpen(false);
   }, [location.pathname]);
-
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
 
   const meta0 = location.pathname.startsWith("/students/")
     ? { title: "ព័ត៌មានលម្អិតសិស្ស", crumb: "ទូទៅ" }
@@ -175,14 +152,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
       <div className="border-t border-white/10 p-3">
         <div className="flex items-center gap-2.5 rounded-xl px-2 py-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">
-            {user?.name?.slice(0, 2)}
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-ink-200">
+            <HardDrive size={16} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[12.5px] font-medium text-white">{user?.name}</p>
-            <p className="truncate text-[10.5px] text-ink-400">
-              {user?.role === "admin" ? "អ្នកគ្រប់គ្រងប្រព័ន្ធ" : "គ្រូបង្រៀន"}
-            </p>
+            <p className="truncate text-[12.5px] font-medium text-white">ទិន្នន័យក្នុងឧបករណ៍</p>
+            <p className="truncate text-[10.5px] text-ink-400">មិនត្រូវការចូលគណនី</p>
           </div>
         </div>
         <p className="px-2 pb-1 text-center text-[9.5px] leading-relaxed text-ink-600">
@@ -237,49 +212,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     : "កំពុងផ្ទុក…"}
                 </span>
               </div>
-              <div className="relative" ref={menuRef}>
-                <button
-                  onClick={() => setMenuOpen((v) => !v)}
-                  className="flex items-center gap-2 rounded-xl border border-ink-200 bg-white py-1.5 pl-1.5 pr-2.5 transition hover:bg-ink-50"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-600 text-[11px] font-semibold text-white">
-                    {user?.name?.slice(0, 2)}
-                  </div>
-                  <span className="hidden max-w-[110px] truncate text-xs font-medium text-ink-700 sm:block">
-                    {user?.name}
-                  </span>
-                  <ChevronDown size={14} className={cn("text-ink-400 transition", menuOpen && "rotate-180")} />
-                </button>
-                {menuOpen ? (
-                  <div className="absolute right-0 mt-2 w-60 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-pop animate-slide-up">
-                    <div className="border-b border-ink-100 px-4 py-3">
-                      <p className="truncate text-sm font-semibold text-ink-900">{user?.name}</p>
-                      <p className="truncate text-xs text-ink-500">{user?.email ?? `@${user?.username}`}</p>
-                      <span className="badge mt-2 bg-brand-50 text-brand-700">
-                        <ShieldCheck size={11} />
-                        {user?.role === "admin" ? "អ្នកគ្រប់គ្រង" : "គ្រូបង្រៀន"}
-                      </span>
-                    </div>
-                    <button
-                      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-ink-700 hover:bg-ink-50"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setPwdOpen(true);
-                      }}
-                    >
-                      <KeyRound size={15} className="text-ink-400" /> ផ្លាស់ប្ដូរលេខសម្ងាត់
-                    </button>
-                    <button
-                      className="flex w-full items-center gap-2.5 border-t border-ink-100 px-4 py-2.5 text-left text-sm text-rose-600 hover:bg-rose-50"
-                      onClick={() => {
-                        logout();
-                        navigate("/login");
-                      }}
-                    >
-                      <LogOut size={15} /> ចាកចេញ
-                    </button>
-                  </div>
-                ) : null}
+              <div className="hidden items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-medium text-emerald-700 sm:flex">
+                <HardDrive size={13} />
+                <span>ទិន្នន័យរក្សាទុកក្នុងឧបករណ៍</span>
               </div>
             </div>
           </div>
@@ -298,90 +233,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </p>
         </footer>
       </div>
-
-      <PasswordModal open={pwdOpen} onClose={() => setPwdOpen(false)} />
     </div>
-  );
-}
-
-function PasswordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const toast = useToast();
-  const qc = useQueryClient();
-
-  const submit = async () => {
-    setError("");
-    if (next.length < 6) return setError("លេខសម្ងាត់ថ្មីត្រូវមានយ៉ាងតិច ៦ តួអក្សរ");
-    if (next !== confirm) return setError("លេខសម្ងាត់ថ្មីទាំងពីរមិនត្រូវគ្នា");
-    setBusy(true);
-    try {
-      await api("/auth/change-password", {
-        method: "POST",
-        body: { current_password: current, new_password: next },
-      });
-      toast.success("បានផ្លាស់ប្ដូរលេខសម្ងាត់", "សូមប្រើលេខសម្ងាត់ថ្មីនៅការចូលលើកក្រោយ");
-      setCurrent("");
-      setNext("");
-      setConfirm("");
-      qc.invalidateQueries();
-      onClose();
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="ផ្លាស់ប្ដូរលេខសម្ងាត់"
-      description="សូមបញ្ចូលលេខសម្ងាត់បច្ចុប្បន្ន និងលេខសម្ងាត់ថ្មី"
-      footer={
-        <>
-          <button className="btn-secondary" onClick={onClose}>
-            បោះបង់
-          </button>
-          <button className="btn-primary" onClick={submit} disabled={busy}>
-            {busy ? <Spinner /> : null} រក្សាទុក
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <Field label="លេខសម្ងាត់បច្ចុប្បន្ន" required>
-          <input
-            type="password"
-            className="input"
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
-            autoComplete="current-password"
-          />
-        </Field>
-        <Field label="លេខសម្ងាត់ថ្មី" required hint="យ៉ាងតិច ៦ តួអក្សរ">
-          <input
-            type="password"
-            className="input"
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-            autoComplete="new-password"
-          />
-        </Field>
-        <Field label="បញ្ជាក់លេខសម្ងាត់ថ្មី" required error={error || undefined}>
-          <input
-            type="password"
-            className="input"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            autoComplete="new-password"
-          />
-        </Field>
-      </div>
-    </Modal>
   );
 }

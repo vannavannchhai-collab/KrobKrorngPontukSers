@@ -1,28 +1,5 @@
-const TOKEN_KEY = "kps.token";
-const USER_KEY = "kps.user";
-
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setSession(token: string, user: unknown) {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
-}
-
-export function clearSession() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
-}
-
-export function cachedUser<T>(): T | null {
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
+import { HttpError } from "./db";
+import { csvFor, handleLocal, type ApiRequest } from "./localapi";
 
 export class ApiError extends Error {
   status: number;
@@ -39,59 +16,53 @@ type Options = {
   signal?: AbortSignal;
 };
 
-function buildUrl(path: string, query?: Options["query"]) {
-  const url = path.startsWith("/api") ? path : `/api${path}`;
-  if (!query) return url;
-  const params = new URLSearchParams();
+function toQuery(query?: Options["query"]): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!query) return out;
   for (const [k, v] of Object.entries(query)) {
     if (v === undefined || v === null || v === "") continue;
-    params.set(k, String(v));
+    out[k] = String(v);
   }
-  const qs = params.toString();
-  return qs ? `${url}?${qs}` : url;
+  return out;
 }
 
+/**
+ * Every call is resolved locally against the browser data store — there is no
+ * network request anymore. The signature is unchanged so pages stay untouched.
+ */
 export async function api<T>(path: string, opts: Options = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (opts.body !== undefined) headers["Content-Type"] = "application/json";
-
-  const res = await fetch(buildUrl(path, opts.query), {
+  const request: ApiRequest = {
     method: opts.method ?? "GET",
-    headers,
-    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-    signal: opts.signal,
-  });
-
-  if (res.status === 401 && !path.includes("/auth/login")) {
-    clearSession();
-    window.dispatchEvent(new Event("kps:unauthorized"));
+    path,
+    query: toQuery(opts.query),
+    body: (opts.body as Record<string, unknown>) ?? {},
+  };
+  try {
+    return handleLocal(request) as T;
+  } catch (err) {
+    if (err instanceof HttpError) throw new ApiError(err.status, err.message);
+    if (err instanceof Error) throw new ApiError(500, err.message);
+    throw new ApiError(500, "មានបញ្ហាមិនស្គាល់");
   }
-
-  const contentType = res.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json")
-    ? await res.json().catch(() => null)
-    : await res.text();
-
-  if (!res.ok) {
-    const message =
-      (payload && typeof payload === "object" && "error" in payload && (payload as any).error) ||
-      (typeof payload === "string" && payload) ||
-      "មានបញ្ហាក្នុងការភ្ជាប់ទៅម៉ាស៊ីនបម្រើ";
-    throw new ApiError(res.status, String(message));
-  }
-  return payload as T;
 }
 
-/** Download a file that requires the auth header (CSV exports). */
-export async function download(path: string, filename: string) {
-  const token = getToken();
-  const res = await fetch(buildUrl(path), {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new ApiError(res.status, "ការទាញយកបរាជ័យ");
-  const blob = await res.blob();
+/** Save a generated CSV file to the user's device (no server involved). */
+export async function download(path: string, fallbackName: string) {
+  const [rawPath, rawQuery = ""] = path.split("?");
+  const query: Record<string, string> = {};
+  for (const [k, v] of new URLSearchParams(rawQuery)) query[k] = v;
+
+  let csv: string;
+  let filename = fallbackName;
+  try {
+    const out = csvFor(rawPath, query);
+    csv = out.csv;
+    filename = out.filename;
+  } catch (err) {
+    throw new ApiError(err instanceof HttpError ? err.status : 500, (err as Error).message);
+  }
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

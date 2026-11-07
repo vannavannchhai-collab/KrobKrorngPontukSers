@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useMeta } from "../lib/useMeta";
-import { useAuth } from "../lib/auth";
+import { useSession } from "../lib/session";
 import { Avatar, EmptyState, GradeBadge, PageLoader, SectionCard, StatCard } from "../components/ui";
 import { cn, formatDate, formatNumber } from "../lib/utils";
 import type { GradeInfo, StudentResult, Term } from "../lib/types";
@@ -60,7 +60,7 @@ interface DashboardData {
 const BAND_COLORS = ["#10b981", "#0ea5e9", "#6366f1", "#f59e0b", "#f97316", "#f43f5e"];
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user } = useSession();
   const { data: meta } = useMeta();
   const [termId, setTermId] = useState<number | null>(null);
   const activeTerm = termId ?? meta?.settings.term_id ?? null;
@@ -86,12 +86,12 @@ export default function DashboardPage() {
           title="ប្រព័ន្ធនេះមិនទាន់មានទិន្នន័យ"
           description={
             user?.role === "admin"
-              ? "សូមរៀបចំព័ត៌មានសាលា ឆ្នាំសិក្សា មុខវិជ្ជា និងថ្នាក់រៀន ដើម្បីចាប់ផ្ដើមប្រើប្រាស់។"
-              : "សូមរង់ចាំអ្នកគ្រប់គ្រងរៀបចំឆ្នាំសិក្សា និងចាត់តាំងថ្នាក់ឱ្យអ្នក។"
+              ? "សូមបំពេញព័ត៌មានសាលា បង្កើតថ្នាក់រៀន និងបន្ថែមសិស្ស ដើម្បីចាប់ផ្ដើមប្រើប្រាស់។"
+              : ""
           }
           action={
             user?.role === "admin" ? (
-              <Link to="/setup" className="btn-primary btn-sm">
+              <Link to="/settings" className="btn-primary btn-sm">
                 ចាប់ផ្ដើមរៀបចំប្រព័ន្ធ
               </Link>
             ) : undefined

@@ -4,7 +4,11 @@ import {
   Building2,
   CalendarRange,
   Check,
+  Database,
+  Download,
   GraduationCap,
+  RotateCcw,
+  Upload,
   Plus,
   Save,
   Scale,
@@ -14,7 +18,7 @@ import { api } from "../lib/api";
 import type { GradeInfo, ScoreType, Term, AcademicYear } from "../lib/types";
 import { EmptyState, Field, PageLoader, Spinner, Tabs } from "../components/ui";
 import { useToast } from "../components/Toast";
-import { GoogleOAuthCard } from "../components/GoogleOAuthCard";
+import { exportAll, importAll, resetAll, store } from "../lib/db";
 import { cn, formatDate } from "../lib/utils";
 
 interface SettingsResponse {
@@ -186,7 +190,6 @@ export default function SettingsPage() {
               <Field label="ស្លោកសម្គាល់សាលា">
                 <input className="input" value={school.motto} onChange={(e) => setSchool({ ...school, motto: e.target.value })} />
               </Field>
-              <GoogleOAuthCard />
             </div>
           </section>
 
@@ -209,6 +212,86 @@ export default function SettingsPage() {
               ប្រព័ន្ធគ្រប់គ្រងពិន្ទុសិស្ស v1.0
               <br />© {new Date().getFullYear()} រក្សាសិទ្ធិគ្រប់យ៉ាងដោយ
               <span className="font-semibold text-ink-600"> វណ្ណា វណ្ណឆៃ</span>
+            </div>
+          </section>
+
+          <section className="card h-fit p-4">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-900">
+              <Database size={16} className="text-brand-500" /> ទិន្នន័យក្នុងឧបករណ៍
+            </h3>
+            <p className="text-[11.5px] leading-relaxed text-ink-500">
+              ទិន្នន័យទាំងអស់ (សិស្ស ពិន្ទុ វត្តមាន) រក្សាទុកក្នុងកម្មវិធីរុករករបស់អ្នក។
+              សូមនាំចេញឯកសារបម្រុងជាប្រចាំ ដើម្បីការពារការបាត់បង់ ឬផ្ទេរទៅឧបករណ៍ផ្សេង។
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-[11.5px]">
+              <div className="rounded-lg bg-ink-50 px-2.5 py-2">
+                <p className="text-ink-400">សិស្ស</p>
+                <p className="text-[13px] font-semibold text-ink-900">{store().students.length}</p>
+              </div>
+              <div className="rounded-lg bg-ink-50 px-2.5 py-2">
+                <p className="text-ink-400">ពិន្ទុ</p>
+                <p className="text-[13px] font-semibold text-ink-900">{store().scores.length}</p>
+              </div>
+              <div className="rounded-lg bg-ink-50 px-2.5 py-2">
+                <p className="text-ink-400">ថ្នាក់</p>
+                <p className="text-[13px] font-semibold text-ink-900">{store().classes.length}</p>
+              </div>
+              <div className="rounded-lg bg-ink-50 px-2.5 py-2">
+                <p className="text-ink-400">វត្តមាន</p>
+                <p className="text-[13px] font-semibold text-ink-900">{store().attendance.length}</p>
+              </div>
+            </div>
+            <div className="mt-3 space-y-2">
+              <button
+                className="btn-secondary btn-sm w-full"
+                onClick={() => {
+                  const blob = new Blob([exportAll()], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `kps-backup-${new Date().toISOString().slice(0, 10)}.json`;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  setTimeout(() => URL.revokeObjectURL(url), 2000);
+                  toast.success("បាននាំចេញឯកសារបម្រុង");
+                }}
+              >
+                <Download size={14} /> នាំចេញឯកសារបម្រុង
+              </button>
+              <label className="btn-secondary btn-sm w-full cursor-pointer justify-center">
+                <Upload size={14} /> នាំចូលឯកសារបម្រុង
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      importAll(await file.text());
+                      toast.success("បាននាំចូលទិន្នន័យ", "ទំព័រនឹងផ្ទុកឡើងវិញ");
+                      setTimeout(() => window.location.reload(), 600);
+                    } catch (err) {
+                      toast.error("នាំចូលមិនបានសម្រេច", (err as Error).message);
+                    } finally {
+                      e.target.value = "";
+                    }
+                  }}
+                />
+              </label>
+              <button
+                className="btn-secondary btn-sm w-full text-rose-600 hover:bg-rose-50"
+                onClick={() => {
+                  if (!confirm("តើអ្នកប្រាកដជាចង់លុបទិន្នន័យទាំងអស់ ហើយចាប់ផ្ដើមថ្មី?")) return;
+                  resetAll();
+                  qc.invalidateQueries();
+                  toast.success("បានលុបទិន្នន័យទាំងអស់");
+                  setTimeout(() => window.location.reload(), 400);
+                }}
+              >
+                <RotateCcw size={14} /> លុបទិន្នន័យទាំងអស់
+              </button>
             </div>
           </section>
         </div>

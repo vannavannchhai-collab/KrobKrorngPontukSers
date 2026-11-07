@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { api, download } from "../lib/api";
 import { useMeta } from "../lib/useMeta";
-import { useAuth } from "../lib/auth";
+import { useSession } from "../lib/session";
 import type { Student } from "../lib/types";
 import {
   Avatar,
@@ -45,7 +45,7 @@ interface StudentsResponse {
 }
 
 export default function StudentsPage() {
-  const { user } = useAuth();
+  const { user } = useSession();
   const { data: meta } = useMeta();
   const qc = useQueryClient();
   const toast = useToast();
