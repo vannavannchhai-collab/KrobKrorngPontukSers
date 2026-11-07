@@ -16,13 +16,14 @@ export interface GradeInfo {
   remark: string;
 }
 
-export function getScoreTypes(): ScoreType[] {
-  return db.prepare("SELECT * FROM score_types ORDER BY sort, id").all() as unknown as ScoreType[];
+export async function getScoreTypes(): Promise<ScoreType[]> {
+  return await db.prepare("SELECT * FROM score_types ORDER BY sort, id").all<ScoreType>();
 }
 
-export function getGradeScale(): GradeInfo[] {
+export async function getGradeScale(): Promise<GradeInfo[]> {
   try {
-    const raw = JSON.parse(getSettings().grade_scale ?? "[]") as GradeInfo[];
+    const settings = await getSettings();
+    const raw = JSON.parse(settings.grade_scale ?? "[]") as GradeInfo[];
     if (Array.isArray(raw) && raw.length) return [...raw].sort((a, b) => b.min - a.min);
   } catch {
     /* ignore */
@@ -37,22 +38,23 @@ export function getGradeScale(): GradeInfo[] {
   ];
 }
 
-export function gradeFor(average: number | null): GradeInfo | null {
+export async function gradeFor(average: number | null): Promise<GradeInfo | null> {
   if (average === null || Number.isNaN(average)) return null;
-  const scale = getGradeScale();
+  const scale = await getGradeScale();
   return scale.find((g) => average >= g.min) ?? scale[scale.length - 1];
 }
 
-export function passMark(): number {
-  return Number(getSettings().pass_mark ?? 50);
+export async function passMark(): Promise<number> {
+  const settings = await getSettings();
+  return Number(settings.pass_mark ?? 50);
 }
 
-export function currentTermId(): number | null {
-  const row = db.prepare("SELECT id FROM terms WHERE is_current = 1 LIMIT 1").get() as
+export async function currentTermId(): Promise<number | null> {
+  const row = await db.prepare("SELECT id FROM terms WHERE is_current = 1 LIMIT 1").get() as
     | { id: number }
     | undefined;
   if (row) return row.id;
-  const fallback = db
+  const fallback = await db
     .prepare(
       `SELECT t.id FROM terms t JOIN academic_years y ON y.id = t.academic_year_id
         ORDER BY y.name DESC, t.semester ASC LIMIT 1`,
@@ -61,8 +63,8 @@ export function currentTermId(): number | null {
   return fallback?.id ?? null;
 }
 
-export function termExists(termId: number) {
-  return !!db.prepare("SELECT 1 FROM terms WHERE id = ?").get(termId);
+export async function termExists(termId: number): Promise<boolean> {
+  return !!(await db.prepare("SELECT 1 FROM terms WHERE id = ?").get(termId));
 }
 
 export interface SubjectAverage {
@@ -100,9 +102,9 @@ interface SubjectRow {
   credits: number;
 }
 
-function subjectsForClass(classId: number | null): SubjectRow[] {
+async function subjectsForClass(classId: number | null): Promise<SubjectRow[]> {
   if (!classId) return [];
-  return db
+  return await db
     .prepare(
       `SELECT s.id, s.code, s.name_kh, s.name_en, s.credits
          FROM class_subjects cs JOIN subjects s ON s.id = cs.subject_id
@@ -117,15 +119,22 @@ function subjectsForClass(classId: number | null): SubjectRow[] {
  * Subject average = Σ(score × weight) / Σ(weight) over the score types that were entered,
  * so missing assessments do not unfairly penalise a student.
  */
-export function computeClassResults(classId: number, termId: number): {
+export async function computeClassResults(classId: number, termId: number): Promise<{
   students: StudentResult[];
   subjects: SubjectRow[];
   scoreTypes: ScoreType[];
   subjectAverages: { subject_id: number; code: string; name: string; average: number | null }[];
-} {
-  const scoreTypes = getScoreTypes();
-  const subjects = subjectsForClass(classId);
-  const students = db
+}> {
+  const scoreTypes = await getScoreTypes();
+  const subjects = await subjectsForClass(classId);
+  const scale = await getGradeScale();
+  const pass = await passMark();
+  const classRow = await db.prepare("SELECT name FROM classes WHERE id = ?").get<{ name: string }>(classId);
+  const gradeForAverage = (average: number | null) => {
+    if (average === null || Number.isNaN(average)) return null;
+    return scale.find((g) => average >= g.min) ?? scale[scale.length - 1];
+  };
+  const students = await db
     .prepare(
       `SELECT id, code, last_name_kh, first_name_kh, last_name_en, first_name_en, gender, class_id
          FROM students WHERE class_id = ? AND status = 'active'
@@ -142,7 +151,7 @@ export function computeClassResults(classId: number, termId: number): {
     class_id: number | null;
   }[];
 
-  const rows = db
+  const rows = await db
     .prepare(
       `SELECT sc.student_id, sc.subject_id, st.code AS type_code, sc.score
          FROM scores sc
@@ -202,11 +211,7 @@ export function computeClassResults(classId: number, termId: number): {
       graded++;
     }
     const average = creditSum > 0 ? round(totalWeighted / creditSum) : null;
-    const grade = gradeFor(average);
-    const pass = passMark();
-    const classRow = db.prepare("SELECT name FROM classes WHERE id = ?").get(classId) as
-      | { name: string }
-      | undefined;
+    const grade = gradeForAverage(average);
 
     return {
       student_id: s.id,
@@ -262,18 +267,21 @@ export function computeClassResults(classId: number, termId: number): {
   };
 }
 
-export function computeStudentResult(studentId: number, termId: number): StudentResult | null {
-  const row = db.prepare("SELECT class_id FROM students WHERE id = ?").get(studentId) as
-    | { class_id: number | null }
-    | undefined;
+export async function computeStudentResult(
+  studentId: number,
+  termId: number,
+): Promise<StudentResult | null> {
+  const row = await db
+    .prepare("SELECT class_id FROM students WHERE id = ?")
+    .get<{ class_id: number | null }>(studentId);
   if (!row) return null;
   if (!row.class_id) return null;
-  const { students } = computeClassResults(row.class_id, termId);
+  const { students } = await computeClassResults(row.class_id, termId);
   return students.find((s) => s.student_id === studentId) ?? null;
 }
 
-export function attendanceSummary(classId: number, from: string, to: string) {
-  const rows = db
+export async function attendanceSummary(classId: number, from: string, to: string) {
+  const rows = await db
     .prepare(
       `SELECT student_id,
               SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) AS present,
@@ -292,7 +300,7 @@ export function attendanceSummary(classId: number, from: string, to: string) {
     permission: number;
   }[];
   const map = new Map(rows.map((r) => [r.student_id, r]));
-  const students = db
+  const students = await db
     .prepare("SELECT id FROM students WHERE class_id = ? AND status = 'active'")
     .all(classId) as unknown as { id: number }[];
   return students.map((s) => ({

@@ -7,8 +7,8 @@ import { attendanceSummary, computeClassResults, computeStudentResult, currentTe
 const router = Router();
 router.use(authRequired);
 
-function nextCode(): string {
-  const row = db.prepare("SELECT MAX(id) AS m FROM students").get() as { m: number | null };
+async function nextCode(): Promise<string> {
+  const row = await db.prepare("SELECT MAX(id) AS m FROM students").get() as { m: number | null };
   return `STU-${String((row.m ?? 0) + 1).padStart(4, "0")}`;
 }
 
@@ -60,24 +60,31 @@ router.get(
     const orderBy = sortMap[String(req.query.sort ?? "class")] ?? sortMap.class;
 
     const total = (
-      db
+      await db
         .prepare(`SELECT COUNT(*) AS c FROM students s LEFT JOIN classes c ON c.id = s.class_id ${whereSql}`)
         .get(...params) as { c: number }
     ).c;
 
-    const rows = db
+    const rows = await db
       .prepare(`${STUDENT_SELECT} ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
       .all(...params, limit, offset) as any[];
 
-    const termId = Number(req.query.term_id) || currentTermId();
-    const enriched = rows.map((s) => {
-      if (!s.class_id || !termId) return { ...s, average: null, rank: null, grade: null };
-      const { students } = computeClassResults(s.class_id, termId);
-      const mine = students.find((x) => x.student_id === s.id);
-      return { ...s, average: mine?.average ?? null, rank: mine?.rank ?? null, grade: mine?.grade ?? null };
-    });
+    const termId = Number(req.query.term_id) || (await currentTermId());
+    const classCache = new Map<number, Awaited<ReturnType<typeof computeClassResults>>>();
+    const enriched = await Promise.all(
+      rows.map(async (s) => {
+        if (!s.class_id || !termId) return { ...s, average: null, rank: null, grade: null };
+        let res = classCache.get(s.class_id);
+        if (!res) {
+          res = await computeClassResults(s.class_id, termId);
+          classCache.set(s.class_id, res);
+        }
+        const mine = res.students.find((x) => x.student_id === s.id);
+        return { ...s, average: mine?.average ?? null, rank: mine?.rank ?? null, grade: mine?.grade ?? null };
+      }),
+    );
 
-    const summary = db.prepare(
+    const summary = await db.prepare(
       `SELECT
          COUNT(*) AS total,
          SUM(CASE WHEN s.gender='M' THEN 1 ELSE 0 END) AS male,
@@ -94,39 +101,41 @@ router.get(
   "/:id",
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    const student = db.prepare(`${STUDENT_SELECT} WHERE s.id = ?`).get(id) as any;
+    const student = await db.prepare(`${STUDENT_SELECT} WHERE s.id = ?`).get(id) as any;
     if (!student) throw new HttpError(404, "រកមិនឃើញសិស្ស");
 
-    const termId = Number(req.query.term_id) || currentTermId();
-    const result = termId ? computeStudentResult(id, termId) : null;
+    const termId = Number(req.query.term_id) || (await currentTermId());
+    const result = termId ? await computeStudentResult(id, termId) : null;
 
-    const terms = db
+    const terms = await db
       .prepare("SELECT * FROM terms ORDER BY academic_year_id, semester")
       .all() as unknown as { id: number; name: string; semester: number; academic_year_id: number }[];
 
-    const history = terms.map((t) => {
-      const r = computeStudentResult(id, t.id);
-      return {
-        term_id: t.id,
-        term_name: t.name,
-        semester: t.semester,
-        average: r?.average ?? null,
-        rank: r?.rank ?? null,
-        grade: r?.grade ?? null,
-        passed: r?.passed ?? null,
-        subject_count: r?.subjects.filter((s) => s.average !== null).length ?? 0,
-      };
-    });
+    const history = await Promise.all(
+      terms.map(async (t) => {
+        const r = await computeStudentResult(id, t.id);
+        return {
+          term_id: t.id,
+          term_name: t.name,
+          semester: t.semester,
+          average: r?.average ?? null,
+          rank: r?.rank ?? null,
+          grade: r?.grade ?? null,
+          passed: r?.passed ?? null,
+          subject_count: r?.subjects.filter((s) => s.average !== null).length ?? 0,
+        };
+      }),
+    );
 
     const term = termId
-      ? (db.prepare("SELECT * FROM terms WHERE id = ?").get(termId) as any)
+      ? (await db.prepare("SELECT * FROM terms WHERE id = ?").get(termId) as any)
       : null;
     const attendance = student.class_id
-      ? attendanceSummary(
+      ? (await attendanceSummary(
           student.class_id,
           term?.start_date ?? "0000-01-01",
           term?.end_date ?? "9999-12-31",
-        ).find((a) => a.student_id === id)
+        )).find((a) => a.student_id === id)
       : null;
 
     res.json({
@@ -135,11 +144,11 @@ router.get(
       history,
       attendance,
       classSize: student.class_id
-        ? (db.prepare("SELECT COUNT(*) AS c FROM students WHERE class_id = ? AND status='active'").get(student.class_id) as any).c
+        ? (await db.prepare("SELECT COUNT(*) AS c FROM students WHERE class_id = ? AND status='active'").get(student.class_id) as any).c
         : 0,
       className: student.class_name,
       homeroom: student.class_id
-        ? (db
+        ? (await db
             .prepare(
               "SELECT u.name FROM classes c JOIN users u ON u.id=c.homeroom_teacher_id WHERE c.id=?",
             )
@@ -156,9 +165,9 @@ router.post(
     const b = req.body ?? {};
     if (!b.last_name_kh || !b.first_name_kh) throw new HttpError(400, "សូមបញ្ចូលនាមត្រកូល និងនាមខ្លួន");
     if (!["M", "F"].includes(b.gender)) throw new HttpError(400, "សូមជ្រើសរើសភេទ");
-    const code = (b.code && String(b.code).trim()) || nextCode();
+    const code = (b.code && String(b.code).trim()) || await nextCode();
     try {
-      const info = db
+      const info = await db
         .prepare(
           `INSERT INTO students
             (code, last_name_kh, first_name_kh, last_name_en, first_name_en, gender, dob, class_id,
@@ -182,7 +191,7 @@ router.post(
           b.status ?? "active",
           b.note ?? null,
         );
-      audit(
+      await audit(
         req.user,
         "create",
         "student",
@@ -204,9 +213,9 @@ router.put(
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const b = req.body ?? {};
-    const exists = db.prepare("SELECT 1 FROM students WHERE id = ?").get(id);
+    const exists = await db.prepare("SELECT 1 FROM students WHERE id = ?").get(id);
     if (!exists) throw new HttpError(404, "រកមិនឃើញសិស្ស");
-    db.prepare(
+    await db.prepare(
       `UPDATE students SET
         code = COALESCE(?, code), last_name_kh = COALESCE(?, last_name_kh),
         first_name_kh = COALESCE(?, first_name_kh), last_name_en = ?, first_name_en = ?,
@@ -232,7 +241,7 @@ router.put(
       b.note ?? null,
       id,
     );
-    audit(req.user, "update", "student", id, `កែប្រែព័ត៌មានសិស្ស ${b.last_name_kh ?? ""}`, req.ip);
+    await audit(req.user, "update", "student", id, `កែប្រែព័ត៌មានសិស្ស ${b.last_name_kh ?? ""}`, req.ip);
     res.json({ ok: true });
   }),
 );
@@ -242,10 +251,10 @@ router.delete(
   adminOnly,
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    const row = db.prepare("SELECT last_name_kh, first_name_kh FROM students WHERE id = ?").get(id) as any;
+    const row = await db.prepare("SELECT last_name_kh, first_name_kh FROM students WHERE id = ?").get(id) as any;
     if (!row) throw new HttpError(404, "រកមិនឃើញសិស្ស");
-    db.prepare("DELETE FROM students WHERE id = ?").run(id);
-    audit(req.user, "delete", "student", id, `លុបសិស្ស ${row.last_name_kh} ${row.first_name_kh}`, req.ip);
+    await db.prepare("DELETE FROM students WHERE id = ?").run(id);
+    await audit(req.user, "delete", "student", id, `លុបសិស្ស ${row.last_name_kh} ${row.first_name_kh}`, req.ip);
     res.json({ ok: true });
   }),
 );
@@ -258,9 +267,9 @@ router.post(
     const ids: number[] = Array.isArray(req.body?.student_ids) ? req.body.student_ids.map(Number) : [];
     const classId = req.body?.class_id === null ? null : Number(req.body?.class_id);
     if (!ids.length) throw new HttpError(400, "សូមជ្រើសរើសសិស្ស");
-    const stmt = db.prepare("UPDATE students SET class_id = ? WHERE id = ?");
+    const stmt = await db.prepare("UPDATE students SET class_id = ? WHERE id = ?");
     for (const id of ids) stmt.run(classId, id);
-    audit(req.user, "update", "student", null, `ផ្ទេរសិស្ស ${ids.length} នាក់ទៅថ្នាក់ថ្មី`, req.ip);
+    await audit(req.user, "update", "student", null, `ផ្ទេរសិស្ស ${ids.length} នាក់ទៅថ្នាក់ថ្មី`, req.ip);
     res.json({ ok: true, moved: ids.length });
   }),
 );
@@ -333,7 +342,7 @@ router.post(
 
     let created = 0;
     const errors: string[] = [];
-    const insert = db.prepare(
+    const insert = await db.prepare(
       `INSERT INTO students (code, last_name_kh, first_name_kh, gender, dob, class_id, phone,
          guardian_name, guardian_phone, address, enroll_date, status)
        VALUES (?,?,?,?,?,?,?,?,?,?,date('now'),'active')`,
@@ -351,14 +360,14 @@ router.post(
       const classRaw = (iClass >= 0 ? row[iClass] : "").trim();
       let classId: number | null = null;
       if (classRaw) {
-        const cls = db.prepare("SELECT id FROM classes WHERE lower(name) = lower(?)").get(classRaw) as any;
+        const cls = await db.prepare("SELECT id FROM classes WHERE lower(name) = lower(?)").get(classRaw) as any;
         if (!cls) {
           errors.push(`ជួរទី ${r + 1}: រកមិនឃើញថ្នាក់ "${classRaw}"`);
           continue;
         }
         classId = cls.id;
       }
-      const code = (iCode >= 0 ? row[iCode] : "").trim() || nextCode();
+      const code = (iCode >= 0 ? row[iCode] : "").trim() || await nextCode();
       try {
         insert.run(
           code,
@@ -377,7 +386,7 @@ router.post(
         errors.push(`ជួរទី ${r + 1}: ${String(e.message).includes("UNIQUE") ? "កូដសិស្សស្ទួន" : "ទិន្នន័យមិនត្រឹមត្រូវ"}`);
       }
     }
-    audit(req.user, "import", "student", null, `នាំចូលសិស្ស ${created} នាក់`, req.ip);
+    await audit(req.user, "import", "student", null, `នាំចូលសិស្ស ${created} នាក់`, req.ip);
     res.json({ created, errors: errors.slice(0, 20), totalErrors: errors.length });
   }),
 );
@@ -388,7 +397,7 @@ router.get(
   "/export/csv",
   asyncHandler(async (req, res) => {
     const classId = req.query.class_id ? Number(req.query.class_id) : null;
-    const rows = db
+    const rows = await db
       .prepare(
         `${STUDENT_SELECT} ${classId ? "WHERE s.class_id = ?" : ""}
          ORDER BY c.grade_level, c.name, s.last_name_kh, s.first_name_kh`,

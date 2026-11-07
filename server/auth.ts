@@ -40,7 +40,7 @@ export function signToken(user: AuthUser): string {
   return jwt.sign(user, JWT_SECRET, { expiresIn: "12h" });
 }
 
-export function authRequired(req: Request, res: Response, next: NextFunction) {
+export async function authRequired(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: "សូមចូលប្រើប្រាស់ជាមុន" });
@@ -54,9 +54,9 @@ export function authRequired(req: Request, res: Response, next: NextFunction) {
       subject_id: payload.subject_id ?? null,
     };
     // Verify the account still exists and is enabled.
-    const row = db.prepare("SELECT is_active FROM users WHERE id = ?").get(req.user.id) as
-      | { is_active: number }
-      | undefined;
+    const row = await db
+      .prepare("SELECT is_active FROM users WHERE id = ?")
+      .get<{ is_active: number }>(req.user.id);
     if (!row || !row.is_active) return res.status(401).json({ error: "គណនីត្រូវបានបិទ" });
     next();
   } catch {
@@ -72,21 +72,25 @@ export function adminOnly(req: Request, res: Response, next: NextFunction) {
 }
 
 /** Teachers may only touch the classes/subjects assigned to them. */
-export function canEditSubject(classId: number, subjectId: number, user: AuthUser): boolean {
+export async function canEditSubject(
+  classId: number,
+  subjectId: number,
+  user: AuthUser,
+): Promise<boolean> {
   if (user.role === "admin") return true;
-  const row = db
+  const row = await db
     .prepare("SELECT 1 FROM class_subjects WHERE class_id = ? AND subject_id = ? AND teacher_id = ?")
     .get(classId, subjectId, user.id);
   return !!row;
 }
 
-export function canEditClass(classId: number, user: AuthUser): boolean {
+export async function canEditClass(classId: number, user: AuthUser): Promise<boolean> {
   if (user.role === "admin") return true;
-  const homeroom = db
+  const homeroom = await db
     .prepare("SELECT 1 FROM classes WHERE id = ? AND homeroom_teacher_id = ?")
     .get(classId, user.id);
   if (homeroom) return true;
-  const assigned = db
+  const assigned = await db
     .prepare("SELECT 1 FROM class_subjects WHERE class_id = ? AND teacher_id = ?")
     .get(classId, user.id);
   return !!assigned;
