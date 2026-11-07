@@ -42,18 +42,75 @@ npm start          # http://localhost:4173
 | `npm run typecheck` | ពិនិត្យ TypeScript |
 | `npm run reset` | លុបមូលដ្ឋានទិន្នន័យ (ចាប់ផ្ដើមពីទទេវិញ) |
 
-### អថេរបរិស្ថាន (ស្រេចចិត្ត)
+### អថេរបរិស្ថាន
 
 ```
-PORT=4173                        # ច្រកម៉ាស៊ីនបម្រើ
-DB_PATH=...                      # ទីតាំងឯកសារ SQLite
-JWT_SECRET=...                   # កូនសោចុះហត្ថលេខា token (បើមិនកំណត់ ប្រព័ន្ធបង្កើតដោយស្វ័យប្រវត្តិ)
-GOOGLE_CLIENT_ID=...             # Google OAuth (ស្រេចចិត្ត)
+# ── Database ────────────────────────────────────────────────
+TURSO_DATABASE_URL=...           # libsql://...turso.io (ទុកទទេ = ប្រើឯកសារ SQLite)
+TURSO_AUTH_TOKEN=...             # token ពី Turso (ចាំបាច់ពេលប្រើ Turso)
+DB_PATH=data/school.db           # ឯកសារ SQLite (ពេល TURSO_DATABASE_URL ទទេ)
+
+# ── សុវត្ថិភាព ───────────────────────────────────────────────
+JWT_SECRET=...                   # កូនសោចុះហត្ថលេខា token (ចាំបាច់លើ Vercel)
+PORT=4173
+
+# ── Google OAuth (ស្រេចចិត្ត) ────────────────────────────────
+GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REDIRECT_URI=...          # បើទុកទទេ គណនាពី host នៃសំណើ
 ```
 
 ចម្លង `.env.example` ទៅ `.env` (ឯកសារ `.env` ត្រូវបាន ignore ដោយ git)។
+
+---
+
+## ☁️ ដាក់ដំណើរការលើ Vercel + Turso (libSQL)
+
+Vercel គឺ serverless — គ្មាន disk អចិន្ត្រៃយ៍ទេ ដូច្នេះទិន្នន័យត្រូវរក្សាទុកក្នុង
+**Turso** (SQLite នៅលើ cloud, ឥតគិតថ្លៃ)។ កូដមួយគាំទ្រទាំងពីរ៖
+
+| `TURSO_DATABASE_URL` | Database ដែលប្រើ |
+|---|---|
+| ទទេ (local / VPS) | ឯកសារ SQLite `data/school.db` |
+| `libsql://...` | Turso តាម network |
+
+### ១. បង្កើត database នៅ Turso
+
+1. ចូល <https://turso.tech> ហើយបង្កើត database ថ្មី (ឧ. `krobkrorng-pontuk-sers`)។
+2. ចម្លង **Database URL** — ទម្រង់ `libsql://<db>-<org>.turso.io`។
+3. បង្កើត **token**: `turso db tokens create krobkrorng-pontuk-sers`
+   (ឬតាម Dashboard → *Database → Tokens* → *Create token*)។
+
+### ២. ដាក់កូដលើ Vercel
+
+1. Push កូដទៅ GitHub រួច Vercel → **Add New → Project** → ជ្រើស repo នេះ។
+   Framework ត្រូវបានរកឃើញជា **Vite** ដោយស្វ័យប្រវត្តិ។
+2. Settings → **Environment Variables** បន្ថែម (ធីក Production, Preview, Development)៖
+
+| ឈ្មោះ | តម្លៃ | ចាំបាច់ |
+|---|---|---|
+| `TURSO_DATABASE_URL` | `libsql://...turso.io` | ✅ |
+| `TURSO_AUTH_TOKEN` | token ពី Turso | ✅ |
+| `JWT_SECRET` | ខ្សែអក្សរបំពេញចិត្ត ≥ 32 តួ (ឧ. `openssl rand -hex 48`) | ✅ |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | ស្រេចចិត្ត | – |
+| `GOOGLE_REDIRECT_URI` | `https://<domain>/api/auth/google/callback` | – |
+
+3. ចុច **Deploy**។ `vercel.json` កំណត់រួចហើយ៖
+   - Build: `npm run build` → `dist/` (frontend បម្រើដោយ CDN)
+   - API: រាល់ `/api/*` ចូល function តែមួយ `api/[...path].ts` (Express app ដូចគ្នា)
+   - SPA fallback: route ទាំងអស់ត្រឡប់ទៅ `index.html`
+
+### ៣. បន្ទាប់ពី deploy
+
+- ចូល `<domain>` លើកដំបូង → ទំព័រ **បង្កើតគណនីម្ចាស់ប្រព័ន្ធ** (admin ដំបូង, Gmail)។
+- Schema (តារាងទាំងអស់) ត្រូវបង្កើតដោយស្វ័យប្រវត្តិនៅសំណើដំបូង — គ្មានជំហាន migrate ដោយដៃទេ។
+- **Google OAuth**: redirect URI ត្រូវជា `https://<domain>/api/auth/google/callback`
+  (បញ្ចូលក្នុង Google Cloud Console *និង* ក្នុង ការកំណត់ → ព័ត៌មានសាលា)។
+- បើ Turso មិនភ្ជាប់បាន API នឹងឆ្លើយ `500` ជាមួយសារ
+  «មិនអាចភ្ជាប់ទៅ database បានទេ» — ពិនិត្យ URL/token ម្ដងទៀត។
+
+> ⚠️ កុំប្រើ `data/school.db` នៅលើ Vercel — filesystem អានបានតែប៉ុណ្ណោះ។
+> ការរត់ក្នុងម៉ាស៊ីនផ្ទាល់ ឬ VPS (`npm start`) នៅតែប្រើ SQLite ធម្មតា។
 
 ---
 
@@ -144,12 +201,19 @@ GOOGLE_REDIRECT_URI=https://example.com/api/auth/google/callback
 
 ```
 server/
-  index.ts          # Express app · static · error handling
-  db.ts             # schema · settings · assessment types · audit helper
+  index.ts          # standalone server (npm start) — init DB + listen
+  app.ts            # Express app (shared by server និង Vercel function)
+  db.ts             # dual driver: node:sqlite (local) / @libsql/client (Turso)
+  env.ts            # .env loader
+  google.ts         # Google OAuth config (env ឬ settings)
   auth.ts           # scrypt · JWT · middleware · RBAC helpers
   compute.ts        # គណនាមធ្យមភាគ/និទ្ទេស/ចំណាត់ថ្នាក់/វត្តមាន
   routes/           # auth (register/login) · academics · students · scores ·
                     # results · attendance · dashboard · admin
+api/
+  [...path].ts      # Vercel serverless entry — /api/* ទាំងអស់
+vercel.json         # build · function · rewrite · headers
+
 src/
   lib/              # api client · auth context · meta hook · helpers · types
   components/       # layout · UI primitives · toast · student form · import modal

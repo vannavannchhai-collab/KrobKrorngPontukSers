@@ -1,4 +1,3 @@
-import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -7,26 +6,186 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(here, "..");
 export const DATA_DIR = path.join(ROOT, "data");
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+} catch {
+  /* read-only filesystem (Vercel) — only reachable when using a remote database */
+}
 
-const DB_PATH = process.env.DB_PATH ?? path.join(DATA_DIR, "school.db");
+/**
+ * Storage driver
+ * --------------------------------------------------------------
+ * • Local / any server with a disk : SQLite file through `node:sqlite`.
+ * • Vercel (serverless, read-only FS): libSQL / Turso through `@libsql/client`.
+ *
+ * Set TURSO_DATABASE_URL (+ TURSO_AUTH_TOKEN) to use the remote driver.
+ * Every query is exposed asynchronously so both drivers share one code path.
+ */
+const REMOTE_URL = (process.env.TURSO_DATABASE_URL ?? "").trim();
+const REMOTE_TOKEN = (process.env.TURSO_AUTH_TOKEN ?? "").trim();
+export const isRemoteDb = /^(libsql|https?):\/\//.test(REMOTE_URL);
 
-export const db = new DatabaseSync(DB_PATH);
-db.exec("PRAGMA journal_mode = WAL;");
-db.exec("PRAGMA foreign_keys = ON;");
+export const DB_PATH =
+  process.env.DB_PATH ?? path.join(DATA_DIR, "school.db");
 
-/** Persistent JWT secret so sessions survive a restart. */
+/** Persistent JWT secret so sessions survive restarts. */
 export const JWT_SECRET = (() => {
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+  if (isRemoteDb) {
+    console.warn(
+      "⚠️  JWT_SECRET មិនទាន់កំណត់ — កំពុងប្រើតម្លៃក្លែងក្លាយពី database credentials។ សូមកំណត់ JWT_SECRET នៅ environment variables។",
+    );
+    return crypto
+      .createHash("sha256")
+      .update(`kps-jwt:${REMOTE_URL}:${REMOTE_TOKEN}`)
+      .digest("hex");
+  }
   const secretFile = path.join(DATA_DIR, ".jwt-secret");
-  if (fs.existsSync(secretFile)) return fs.readFileSync(secretFile, "utf8").trim();
-  const secret = crypto.randomBytes(48).toString("hex");
-  fs.writeFileSync(secretFile, secret, { mode: 0o600 });
-  return secret;
+  try {
+    if (fs.existsSync(secretFile)) return fs.readFileSync(secretFile, "utf8").trim();
+    const secret = crypto.randomBytes(48).toString("hex");
+    fs.writeFileSync(secretFile, secret, { mode: 0o600 });
+    return secret;
+  } catch {
+    const secret = crypto.randomBytes(48).toString("hex");
+    console.warn("⚠️  មិនអាចសរសេរ data/.jwt-secret បានទេ — សូមកំណត់ JWT_SECRET");
+    return secret;
+  }
 })();
 
-export function initSchema() {
-  db.exec(`
+export interface ExecResult {
+  changes: number;
+  lastInsertRowid: number;
+}
+
+type Primitive = string | number | bigint | boolean | null | undefined | Uint8Array;
+
+function normalizeArgs(args: Primitive[]): (string | number | bigint | null | Uint8Array)[] {
+  return args.map((v) => {
+    if (v === undefined) return null;
+    if (typeof v === "boolean") return v ? 1 : 0;
+    return v as string | number | bigint | null | Uint8Array;
+  });
+}
+
+interface Driver {
+  all(sql: string, args: Primitive[]): Promise<Record<string, unknown>[]>;
+  run(sql: string, args: Primitive[]): Promise<ExecResult>;
+  exec(sql: string): Promise<void>;
+}
+
+class LocalDriver implements Driver {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(private readonly sync: any) {}
+
+  async all(sql: string, args: Primitive[]) {
+    return this.sync.prepare(sql).all(...normalizeArgs(args)) as Record<string, unknown>[];
+  }
+
+  async run(sql: string, args: Primitive[]) {
+    const res = this.sync.prepare(sql).run(...normalizeArgs(args));
+    return {
+      changes: Number(res?.changes ?? 0),
+      lastInsertRowid: Number(res?.lastInsertRowid ?? 0),
+    };
+  }
+
+  async exec(sql: string) {
+    this.sync.exec(sql);
+  }
+}
+
+class RemoteDriver implements Driver {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(private readonly client: any) {}
+
+  async all(sql: string, args: Primitive[]) {
+    const res = await this.client.execute({ sql, args: normalizeArgs(args) });
+    return (res.rows ?? []) as Record<string, unknown>[];
+  }
+
+  async run(sql: string, args: Primitive[]) {
+    const res = await this.client.execute({ sql, args: normalizeArgs(args) });
+    return {
+      changes: Number(res.rowsAffected ?? 0),
+      lastInsertRowid: Number(res.lastInsertRowid ?? 0),
+    };
+  }
+
+  async exec(sql: string) {
+    await this.client.executeMultiple(sql);
+  }
+}
+
+let driverPromise: Promise<Driver> | null = null;
+
+function getDriver(): Promise<Driver> {
+  if (!driverPromise) {
+    driverPromise = (async () => {
+      if (isRemoteDb) {
+        const { createClient } = await import("@libsql/client/web");
+        const url = REMOTE_URL.replace(/^libsql:\/\//, "https://");
+        const client = createClient({
+          url,
+          authToken: REMOTE_TOKEN || undefined,
+        });
+        return new RemoteDriver(client);
+      }
+      // The specifier is assembled at runtime so bundlers (Vercel/esbuild) do
+      // not try to resolve the Node-only SQLite module when deploying.
+      const sqliteModule = ["node", "sqlite"].join(":");
+      const { DatabaseSync } = (await import(sqliteModule)) as {
+        DatabaseSync: new (path: string) => unknown;
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sync: any = new (DatabaseSync as any)(DB_PATH);
+      try {
+        sync.exec("PRAGMA journal_mode = WAL;");
+        sync.exec("PRAGMA foreign_keys = ON;");
+      } catch {
+        /* some drivers do not support these pragmas */
+      }
+      return new LocalDriver(sync);
+    })();
+  }
+  return driverPromise;
+}
+
+/** Statement handle — chainable and awaitable, identical on both drivers. */
+export class Statement {
+  constructor(private readonly sql: string) {}
+
+  async get<T = Record<string, unknown>>(...args: Primitive[]): Promise<T | undefined> {
+    const rows = await (await getDriver()).all(this.sql, args);
+    return rows[0] as T | undefined;
+  }
+
+  async all<T = Record<string, unknown>>(...args: Primitive[]): Promise<T[]> {
+    return (await (await getDriver()).all(this.sql, args)) as T[];
+  }
+
+  async run(...args: Primitive[]): Promise<ExecResult> {
+    return (await getDriver()).run(this.sql, args);
+  }
+}
+
+export const db = {
+  prepare(sql: string): Statement {
+    return new Statement(sql);
+  },
+  async exec(sql: string): Promise<ExecResult> {
+    await (await getDriver()).exec(sql);
+    return { changes: 0, lastInsertRowid: 0 };
+  },
+  /** Run several statements atomically (used for bulk imports). */
+  async batch(statements: { sql: string; args?: Primitive[] }[]): Promise<void> {
+    const driver = await getDriver();
+    for (const s of statements) await driver.run(s.sql, s.args ?? []);
+  },
+};
+
+export async function initSchema() {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -171,18 +330,23 @@ export function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date, class_id);
     CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
   `);
-  ensureColumn("users", "google_sub", "TEXT");
-  ensureColumn("users", "avatar_url", "TEXT");
-  ensureColumn("users", "auth_provider", "TEXT NOT NULL DEFAULT 'password'");
-  seedSettings();
-  seedScoreTypes();
+
+  await ensureColumn("users", "google_sub", "TEXT");
+  await ensureColumn("users", "avatar_url", "TEXT");
+  await ensureColumn("users", "auth_provider", "TEXT NOT NULL DEFAULT 'password'");
+  await seedSettings();
+  await seedScoreTypes();
 }
 
 /** Lightweight migration helper for columns added after the first release. */
-function ensureColumn(table: string, column: string, ddl: string) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+async function ensureColumn(table: string, column: string, ddl: string) {
+  const cols = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
   if (!cols.some((c) => c.name === column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+    try {
+      await db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+    } catch {
+      /* concurrent cold starts may race here — the column then already exists */
+    }
   }
 }
 
@@ -216,35 +380,37 @@ const DEFAULT_SCORE_TYPES = [
   { code: "final", name_kh: "ពិន្ទុបញ្ចប់ឆមាស", name_en: "Final Exam", weight: 40, sort: 4 },
 ];
 
-function seedSettings() {
+async function seedSettings() {
   const stmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
-  for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) stmt.run(k, v);
+  for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) await stmt.run(k, v);
 }
 
-function seedScoreTypes() {
+async function seedScoreTypes() {
   const stmt = db.prepare(
     `INSERT OR IGNORE INTO score_types (code, name_kh, name_en, weight, sort) VALUES (?,?,?,?,?)`,
   );
-  for (const t of DEFAULT_SCORE_TYPES) stmt.run(t.code, t.name_kh, t.name_en, t.weight, t.sort);
+  for (const t of DEFAULT_SCORE_TYPES) await stmt.run(t.code, t.name_kh, t.name_en, t.weight, t.sort);
 }
 
-export function getSettings(): Record<string, string> {
-  const rows = db.prepare("SELECT key, value FROM settings").all() as {
+export async function getSettings(): Promise<Record<string, string>> {
+  const rows = await db.prepare("SELECT key, value FROM settings").all<{
     key: string;
     value: string;
-  }[];
+  }>();
   const out: Record<string, string> = {};
   for (const r of rows) out[r.key] = r.value;
   return out;
 }
 
-export function setSetting(key: string, value: string) {
-  db.prepare(
-    "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-  ).run(key, value);
+export async function setSetting(key: string, value: string) {
+  await db
+    .prepare(
+      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .run(key, value);
 }
 
-export function audit(
+export async function audit(
   user: { id?: number; name?: string } | null | undefined,
   action: string,
   entity: string,
@@ -252,15 +418,17 @@ export function audit(
   detail: string,
   ip?: string,
 ) {
-  db.prepare(
-    "INSERT INTO audit_logs (user_id, user_name, action, entity, entity_id, detail, ip) VALUES (?,?,?,?,?,?,?)",
-  ).run(
-    user?.id ?? null,
-    user?.name ?? "ប្រព័ន្ធ",
-    action,
-    entity,
-    entityId ?? null,
-    detail,
-    ip ?? null,
-  );
+  await db
+    .prepare(
+      "INSERT INTO audit_logs (user_id, user_name, action, entity, entity_id, detail, ip) VALUES (?,?,?,?,?,?,?)",
+    )
+    .run(
+      user?.id ?? null,
+      user?.name ?? "ប្រព័ន្ធ",
+      action,
+      entity,
+      entityId ?? null,
+      detail,
+      ip ?? null,
+    );
 }

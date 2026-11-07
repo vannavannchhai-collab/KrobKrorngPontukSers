@@ -10,15 +10,15 @@ router.use(authRequired);
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const termId = Number(req.query.term_id) || currentTermId();
-    const classes = db
+    const termId = Number(req.query.term_id) || (await currentTermId());
+    const classes = await db
       .prepare("SELECT id, name, grade_level FROM classes WHERE is_active = 1 ORDER BY grade_level, name")
       .all() as any[];
 
-    const students = db
+    const students = await db
       .prepare("SELECT gender, status, class_id FROM students")
       .all() as any[];
-    const counts = db
+    const counts = await db
       .prepare(
         `SELECT
            (SELECT COUNT(*) FROM students WHERE status='active') AS students,
@@ -30,34 +30,40 @@ router.get(
       )
       .get() as any;
 
+    const pass = await passMark();
     const classResults = termId
-      ? classes.map((c) => {
-          const res = computeClassResults(c.id, termId);
-          const avgs = res.students.map((s) => s.average).filter((a): a is number => a !== null);
-          const pass = passMark();
-          return {
-            class_id: c.id,
-            name: c.name,
-            grade_level: c.grade_level,
-            students: res.students.length,
-            average: avgs.length ? Math.round((avgs.reduce((a, b) => a + b, 0) / avgs.length) * 100) / 100 : null,
-            pass_rate: avgs.length
-              ? Math.round((avgs.filter((a) => a >= pass).length / avgs.length) * 1000) / 10
-              : null,
-            highest: avgs.length ? Math.max(...avgs) : null,
-          };
-        })
+      ? await Promise.all(
+          classes.map(async (c) => {
+            const res = await computeClassResults(c.id, termId);
+            const avgs = res.students.map((s) => s.average).filter((a): a is number => a !== null);
+            return {
+              class_id: c.id,
+              name: c.name,
+              grade_level: c.grade_level,
+              students: res.students.length,
+              average: avgs.length ? Math.round((avgs.reduce((a, b) => a + b, 0) / avgs.length) * 100) / 100 : null,
+              pass_rate: avgs.length
+                ? Math.round((avgs.filter((a) => a >= pass).length / avgs.length) * 1000) / 10
+                : null,
+              highest: avgs.length ? Math.max(...avgs) : null,
+            };
+          }),
+        )
       : [];
 
     const gradedStudents = termId
-      ? classes.flatMap((c) => computeClassResults(c.id, termId).students)
+      ? (
+          await Promise.all(
+            classes.map(async (c) => (await computeClassResults(c.id, termId)).students),
+          )
+        ).flat()
       : [];
     const allAverages = gradedStudents.map((s) => s.average).filter((a): a is number => a !== null);
     const overallAverage = allAverages.length
       ? Math.round((allAverages.reduce((a, b) => a + b, 0) / allAverages.length) * 100) / 100
       : null;
 
-    const gradeScale = getGradeScale();
+    const gradeScale = await getGradeScale();
     const bands = gradeScale.map((g) => ({
       grade: g.grade,
       label: g.remark,
@@ -71,7 +77,7 @@ router.get(
     }
 
     // Subject-wide performance for the selected term.
-    const subjectRows = db
+    const subjectRows = await db
       .prepare(
         `SELECT s.id, s.code, s.name_kh, s.color, AVG(sc.score) AS raw_average, COUNT(sc.id) AS score_count
            FROM scores sc
@@ -86,32 +92,38 @@ router.get(
     }));
 
     // Trend over all terms (school average).
-    const terms = db
+    const terms = await db
       .prepare(
         `SELECT t.id, t.name, t.semester, y.name AS year_name
            FROM terms t JOIN academic_years y ON y.id = t.academic_year_id
           ORDER BY y.name, t.semester`,
       )
       .all() as any[];
-    const trend = terms.map((t) => {
-      const clsRows = db
-        .prepare("SELECT id FROM classes WHERE is_active = 1")
-        .all() as any[];
-      const avgs = clsRows
-        .flatMap((c) => computeClassResults(c.id, t.id).students)
-        .map((s) => s.average)
-        .filter((a): a is number => a !== null);
-      return {
-        term_id: t.id,
-        label: `${t.name}`,
-        year: t.year_name,
-        average: avgs.length ? Math.round((avgs.reduce((a, b) => a + b, 0) / avgs.length) * 100) / 100 : null,
-      };
-    }).filter((t) => t.average !== null);
+    const trend = (
+      await Promise.all(
+        terms.map(async (t) => {
+          const rows = (
+            await Promise.all(
+              classes.map(async (c) => (await computeClassResults(c.id, t.id)).students),
+            )
+          ).flat();
+          const avgs = rows
+            .map((s) => s.average)
+            .filter((a): a is number => a !== null);
+          return {
+            term_id: t.id,
+            label: `${t.name}`,
+            year: t.year_name,
+            average: avgs.length
+              ? Math.round((avgs.reduce((a, b) => a + b, 0) / avgs.length) * 100) / 100
+              : null,
+          };
+        }),
+      )
+    ).filter((t) => t.average !== null);
 
     const topStudents = termId
-      ? classes
-          .flatMap((c) => computeClassResults(c.id, termId).students)
+      ? gradedStudents
           .filter((s) => s.average !== null)
           .sort((a, b) => (b.average ?? 0) - (a.average ?? 0))
           .slice(0, 8)
@@ -120,7 +132,7 @@ router.get(
 
     // Attendance for the current month.
     const month = todayISO().slice(0, 7);
-    const att = db
+    const att = await db
       .prepare(
         `SELECT
            SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) AS present,
@@ -135,7 +147,7 @@ router.get(
       ? Math.round(((att.present + att.late) / att.total) * 1000) / 10
       : null;
 
-    const recentScores = db
+    const recentScores = await db
       .prepare(
         `SELECT sc.updated_at AS at, u.name AS user_name, s.name_kh AS subject, c.name AS class_name,
                 st.name_kh AS type_name, COUNT(*) AS count
@@ -149,12 +161,12 @@ router.get(
       )
       .all() as any[];
 
-    const recentLogs = db
+    const recentLogs = await db
       .prepare("SELECT * FROM audit_logs ORDER BY id DESC LIMIT 8")
       .all() as any[];
 
     const attention = gradedStudents
-      .filter((s) => s.average !== null && s.average < passMark())
+      .filter((s) => s.average !== null && s.average < pass)
       .sort((a, b) => (a.average ?? 0) - (b.average ?? 0))
       .slice(0, 6)
       .map((s) => ({ ...s }));
@@ -163,7 +175,7 @@ router.get(
       counts: { ...counts, totalStudents: students.length },
       overallAverage,
       passRate: allAverages.length
-        ? Math.round((allAverages.filter((a) => a >= passMark()).length / allAverages.length) * 1000) / 10
+        ? Math.round((allAverages.filter((a) => a >= pass).length / allAverages.length) * 1000) / 10
         : null,
       bands,
       subjectPerformance,
@@ -175,7 +187,7 @@ router.get(
       recentLogs,
       attention,
       termId,
-      term: termId ? db.prepare("SELECT * FROM terms WHERE id = ?").get(termId) : null,
+      term: termId ? await db.prepare("SELECT * FROM terms WHERE id = ?").get(termId) : null,
       month,
     });
   }),

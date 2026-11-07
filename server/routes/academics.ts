@@ -13,9 +13,9 @@ router.get(
   "/meta",
   asyncHandler(async (req, res) => {
     const teacherId = req.query.teacher_id ? Number(req.query.teacher_id) : null;
-    const years = db.prepare("SELECT * FROM academic_years ORDER BY name DESC").all();
-    const terms = db.prepare("SELECT * FROM terms ORDER BY academic_year_id DESC, semester").all();
-    const classes = db
+    const years = await db.prepare("SELECT * FROM academic_years ORDER BY name DESC").all();
+    const terms = await db.prepare("SELECT * FROM terms ORDER BY academic_year_id DESC, semester").all();
+    const classes = await db
       .prepare(
         `SELECT c.*, u.name AS homeroom_name,
                 (SELECT COUNT(*) FROM students s WHERE s.class_id = c.id AND s.status='active') AS student_count
@@ -23,32 +23,34 @@ router.get(
           ORDER BY c.grade_level, c.name`,
       )
       .all();
-    const subjects = db.prepare("SELECT * FROM subjects ORDER BY name_kh").all();
-    const teachers = db
+    const subjects = await db.prepare("SELECT * FROM subjects ORDER BY name_kh").all();
+    const teachers = await db
       .prepare(
         `SELECT u.id, u.name, u.name_en, u.role, u.is_active, u.subject_id
            FROM users u WHERE u.is_active = 1 ORDER BY u.name`,
       )
       .all();
-    const assignments = db
+    const assignments = await db
       .prepare(
         `SELECT cs.id, cs.class_id, cs.subject_id, cs.teacher_id, t.name AS teacher_name
            FROM class_subjects cs LEFT JOIN users t ON t.id = cs.teacher_id`,
       )
       .all();
-    const scoreTypes = getScoreTypes();
-    const settings = getSettings();
-    const currentTerm = db.prepare("SELECT * FROM terms WHERE is_current = 1").get() ??
-      (currentTermId()
-        ? db.prepare("SELECT * FROM terms WHERE id = ?").get(currentTermId())
+    const scoreTypes = await getScoreTypes();
+    const gradeScale = await getGradeScale();
+    const settings = await getSettings();
+    const currentTermIdValue = await currentTermId();
+    const currentTerm = (await db.prepare("SELECT * FROM terms WHERE is_current = 1").get()) ??
+      (currentTermIdValue !== null
+        ? await db.prepare("SELECT * FROM terms WHERE id = ?").get(currentTermIdValue)
         : undefined);
     const currentYear =
       (currentTerm as { academic_year_id?: number } | undefined)?.academic_year_id
-        ? db
+        ? await db
             .prepare("SELECT * FROM academic_years WHERE id = ?")
             .get((currentTerm as { academic_year_id: number }).academic_year_id)
-        : db.prepare("SELECT * FROM academic_years WHERE is_current = 1").get() ??
-          db.prepare("SELECT * FROM academic_years ORDER BY name DESC LIMIT 1").get();
+        : (await db.prepare("SELECT * FROM academic_years WHERE is_current = 1").get()) ??
+          (await db.prepare("SELECT * FROM academic_years ORDER BY name DESC LIMIT 1").get());
 
     res.json({
       years,
@@ -58,7 +60,7 @@ router.get(
       teachers: teacherId ? teachers.filter((t: any) => t.id === teacherId) : teachers,
       assignments,
       scoreTypes,
-      gradeScale: getGradeScale(),
+      gradeScale,
       settings: {
         school_name: settings.school_name,
         school_name_en: settings.school_name_en,
@@ -83,7 +85,7 @@ router.get(
 router.get(
   "/classes",
   asyncHandler(async (_req, res) => {
-    const rows = db
+    const rows = await db
       .prepare(
         `SELECT c.*, u.name AS homeroom_name,
                 (SELECT COUNT(*) FROM students s WHERE s.class_id = c.id AND s.status='active') AS student_count,
@@ -106,7 +108,7 @@ router.post(
     const { name, grade_level, section, academic_year_id, homeroom_teacher_id, room, capacity } = req.body ?? {};
     if (!name || !grade_level || !academic_year_id) throw new HttpError(400, "សូមបញ្ចូលឈ្មោះថ្នាក់ កម្រិត និងឆ្នាំសិក្សា");
     try {
-      const info = db
+      const info = await db
         .prepare(
           `INSERT INTO classes (name, grade_level, section, academic_year_id, homeroom_teacher_id, room, capacity)
            VALUES (?,?,?,?,?,?,?)`,
@@ -120,7 +122,7 @@ router.post(
           room || null,
           Number(capacity) || 50,
         );
-      audit(req.user, "create", "class", Number(info.lastInsertRowid), `បង្កើតថ្នាក់ ${name}`, req.ip);
+      await audit(req.user, "create", "class", Number(info.lastInsertRowid), `បង្កើតថ្នាក់ ${name}`, req.ip);
       res.status(201).json({ id: Number(info.lastInsertRowid) });
     } catch (e: any) {
       if (String(e.message).includes("UNIQUE")) throw new HttpError(409, "ឈ្មោះថ្នាក់នេះមានរួចហើយក្នុងឆ្នាំសិក្សានេះ");
@@ -136,7 +138,7 @@ router.put(
     const id = Number(req.params.id);
     const { name, grade_level, section, academic_year_id, homeroom_teacher_id, room, capacity, is_active } =
       req.body ?? {};
-    db.prepare(
+    await db.prepare(
       `UPDATE classes SET name=?,
          grade_level=COALESCE(?, grade_level),
          section=?, academic_year_id=COALESCE(?, academic_year_id),
@@ -153,7 +155,7 @@ router.put(
       is_active === undefined ? null : is_active ? 1 : 0,
       id,
     );
-    audit(req.user, "update", "class", id, `កែប្រែថ្នាក់ ${name ?? ""}`, req.ip);
+    await audit(req.user, "update", "class", id, `កែប្រែថ្នាក់ ${name ?? ""}`, req.ip);
     res.json({ ok: true });
   }),
 );
@@ -163,12 +165,12 @@ router.delete(
   adminOnly,
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    const count = db.prepare("SELECT COUNT(*) AS c FROM students WHERE class_id = ?").get(id) as {
+    const count = await db.prepare("SELECT COUNT(*) AS c FROM students WHERE class_id = ?").get(id) as {
       c: number;
     };
     if (count.c > 0) throw new HttpError(400, "មិនអាចលុបថ្នាក់ដែលនៅមានសិស្សបានទេ");
-    db.prepare("DELETE FROM classes WHERE id = ?").run(id);
-    audit(req.user, "delete", "class", id, "លុបថ្នាក់", req.ip);
+    await db.prepare("DELETE FROM classes WHERE id = ?").run(id);
+    await audit(req.user, "delete", "class", id, "លុបថ្នាក់", req.ip);
     res.json({ ok: true });
   }),
 );
@@ -179,7 +181,7 @@ router.get(
   "/classes/:id/subjects",
   asyncHandler(async (req, res) => {
     const classId = Number(req.params.id);
-    const rows = db
+    const rows = await db
       .prepare(
         `SELECT s.*, t.id AS teacher_id, t.name AS teacher_name, cs.id AS assignment_id
            FROM class_subjects cs
@@ -200,7 +202,7 @@ router.post(
     const { subject_id, teacher_id } = req.body ?? {};
     if (!subject_id) throw new HttpError(400, "សូមជ្រើសរើសមុខវិជ្ជា");
     try {
-      db.prepare("INSERT INTO class_subjects (class_id, subject_id, teacher_id) VALUES (?,?,?)").run(
+      await db.prepare("INSERT INTO class_subjects (class_id, subject_id, teacher_id) VALUES (?,?,?)").run(
         classId,
         Number(subject_id),
         teacher_id ? Number(teacher_id) : null,
@@ -209,7 +211,7 @@ router.post(
       if (String(e.message).includes("UNIQUE")) throw new HttpError(409, "មុខវិជ្ជានេះមានក្នុងថ្នាក់រួចហើយ");
       throw e;
     }
-    audit(req.user, "create", "class_subject", classId, "បន្ថែមមុខវិជ្ជាចូលថ្នាក់", req.ip);
+    await audit(req.user, "create", "class_subject", classId, "បន្ថែមមុខវិជ្ជាចូលថ្នាក់", req.ip);
     res.status(201).json({ ok: true });
   }),
 );
@@ -220,8 +222,8 @@ router.put(
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const teacherId = req.body?.teacher_id ? Number(req.body.teacher_id) : null;
-    db.prepare("UPDATE class_subjects SET teacher_id = ? WHERE id = ?").run(teacherId, id);
-    audit(req.user, "update", "class_subject", id, "ផ្លាស់ប្ដូរគ្រូបង្រៀន", req.ip);
+    await db.prepare("UPDATE class_subjects SET teacher_id = ? WHERE id = ?").run(teacherId, id);
+    await audit(req.user, "update", "class_subject", id, "ផ្លាស់ប្ដូរគ្រូបង្រៀន", req.ip);
     res.json({ ok: true });
   }),
 );
@@ -231,8 +233,8 @@ router.delete(
   adminOnly,
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    db.prepare("DELETE FROM class_subjects WHERE id = ?").run(id);
-    audit(req.user, "delete", "class_subject", id, "ដកមុខវិជ្ជាចេញពីថ្នាក់", req.ip);
+    await db.prepare("DELETE FROM class_subjects WHERE id = ?").run(id);
+    await audit(req.user, "delete", "class_subject", id, "ដកមុខវិជ្ជាចេញពីថ្នាក់", req.ip);
     res.json({ ok: true });
   }),
 );
@@ -242,7 +244,7 @@ router.delete(
 router.get(
   "/subjects",
   asyncHandler(async (_req, res) => {
-    const rows = db
+    const rows = await db
       .prepare(
         `SELECT s.*,
                 (SELECT COUNT(*) FROM class_subjects cs WHERE cs.subject_id = s.id) AS class_count,
@@ -261,7 +263,7 @@ router.post(
     const { code, name_kh, name_en, credits, color } = req.body ?? {};
     if (!code || !name_kh) throw new HttpError(400, "សូមបញ្ចូលកូដ និងឈ្មោះមុខវិជ្ជា");
     try {
-      const info = db
+      const info = await db
         .prepare("INSERT INTO subjects (code, name_kh, name_en, credits, color) VALUES (?,?,?,?,?)")
         .run(
           String(code).toUpperCase().trim(),
@@ -270,7 +272,7 @@ router.post(
           Number(credits) || 1,
           color || "#4f46e5",
         );
-      audit(req.user, "create", "subject", Number(info.lastInsertRowid), `បង្កើតមុខវិជ្ជា ${name_kh}`, req.ip);
+      await audit(req.user, "create", "subject", Number(info.lastInsertRowid), `បង្កើតមុខវិជ្ជា ${name_kh}`, req.ip);
       res.status(201).json({ id: Number(info.lastInsertRowid) });
     } catch (e: any) {
       if (String(e.message).includes("UNIQUE")) throw new HttpError(409, "កូដមុខវិជ្ជានេះមានរួចហើយ");
@@ -285,7 +287,7 @@ router.put(
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const { code, name_kh, name_en, credits, color, is_active } = req.body ?? {};
-    db.prepare(
+    await db.prepare(
       `UPDATE subjects SET code=COALESCE(?, code), name_kh=COALESCE(?, name_kh), name_en=COALESCE(?, name_en),
          credits=COALESCE(?, credits), color=COALESCE(?, color), is_active=COALESCE(?, is_active) WHERE id=?`,
     ).run(
@@ -297,7 +299,7 @@ router.put(
       is_active === undefined ? null : is_active ? 1 : 0,
       id,
     );
-    audit(req.user, "update", "subject", id, `កែប្រែមុខវិជ្ជា ${name_kh ?? ""}`, req.ip);
+    await audit(req.user, "update", "subject", id, `កែប្រែមុខវិជ្ជា ${name_kh ?? ""}`, req.ip);
     res.json({ ok: true });
   }),
 );
@@ -307,10 +309,10 @@ router.delete(
   adminOnly,
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    const used = db.prepare("SELECT COUNT(*) AS c FROM scores WHERE subject_id = ?").get(id) as { c: number };
+    const used = await db.prepare("SELECT COUNT(*) AS c FROM scores WHERE subject_id = ?").get(id) as { c: number };
     if (used.c > 0) throw new HttpError(400, "មិនអាចលុបមុខវិជ្ជាដែលមានពិន្ទុរួចហើយបានទេ");
-    db.prepare("DELETE FROM subjects WHERE id = ?").run(id);
-    audit(req.user, "delete", "subject", id, "លុបមុខវិជ្ជា", req.ip);
+    await db.prepare("DELETE FROM subjects WHERE id = ?").run(id);
+    await audit(req.user, "delete", "subject", id, "លុបមុខវិជ្ជា", req.ip);
     res.json({ ok: true });
   }),
 );

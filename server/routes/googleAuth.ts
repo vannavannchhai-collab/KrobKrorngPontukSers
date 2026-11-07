@@ -42,7 +42,7 @@ interface PendingCode {
 const pendingStates = new Map<string, PendingState>();
 const pendingCodes = new Map<string, PendingCode>();
 
-function config() {
+async function config() {
   return getGoogleConfig();
 }
 
@@ -83,29 +83,31 @@ async function fetchJson(
 
 /* ---------------------------------------------------------------- status -- */
 
-router.get("/google/status", (req, res) => {
-  const { enabled } = config();
-  const cfg = getGoogleConfig();
-  res.json({
-    enabled,
-    source: cfg.source,
-    redirect_uri: enabled ? redirectUriFor(req) : null,
-    scope: "openid email profile",
-    gmail_only: true,
-  });
-});
+router.get(
+  "/google/status",
+  asyncHandler(async (req, res) => {
+    const cfg = await config();
+    res.json({
+      enabled: cfg.enabled,
+      source: cfg.source,
+      redirect_uri: cfg.enabled ? await redirectUriFor(req) : null,
+      scope: "openid email profile",
+      gmail_only: true,
+    });
+  }),
+);
 
 /* ----------------------------------------------------------------- start -- */
 
-router.get("/google/start", (req, res) => {
-  const { clientId, enabled } = config();
+router.get("/google/start", async (req, res) => {
+  const { clientId, enabled } = await config();
   if (!enabled) return fail(res, "not_configured");
 
   sweep();
   const state = base64url(crypto.randomBytes(24));
   const verifier = base64url(crypto.randomBytes(48));
   const challenge = base64url(crypto.createHash("sha256").update(verifier).digest());
-  const redirectUri = redirectUriFor(req);
+  const redirectUri = await redirectUriFor(req);
 
   pendingStates.set(state, {
     verifier,
@@ -137,7 +139,7 @@ router.get("/google/start", (req, res) => {
 router.get(
   "/google/callback",
   asyncHandler(async (req, res) => {
-    const { clientId, clientSecret, enabled } = config();
+    const { clientId, clientSecret, enabled } = await config();
     if (!enabled) return fail(res, "not_configured");
 
     if (req.query.error) return fail(res, "cancelled");
@@ -188,9 +190,9 @@ router.get(
 
     // 3. Sign in an existing account. Public sign-up is disabled, so unknown
     //    Gmail addresses are rejected — except the very first account (owner).
-    const total = (db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
+    const total = (await db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
 
-    let user = db
+    let user = await db
       .prepare("SELECT * FROM users WHERE lower(email) = ? OR lower(username) = ? LIMIT 1")
       .get(email, email) as
       | {
@@ -208,7 +210,7 @@ router.get(
     let created = false;
     if (user) {
       if (!user.is_active) return fail(res, "disabled");
-      db.prepare(
+      await db.prepare(
         "UPDATE users SET last_login_at = datetime('now'), google_sub = ?, email = COALESCE(email, ?) WHERE id = ?",
       ).run(googleSub, email, user.id);
     } else {
@@ -217,7 +219,7 @@ router.get(
       const role: "admin" | "teacher" = "admin"; // owner bootstrap only
       // Random local password: the account can only be accessed through Google
       // until an administrator sets a password for it.
-      const info = db
+      const info = await db
         .prepare(
           `INSERT INTO users (username, password_hash, name, role, email, google_sub, auth_provider, is_active)
            VALUES (?,?,?,?,?,?,'google',1)`,
@@ -252,7 +254,7 @@ router.get(
       subject_id: user.subject_id,
     };
     const signed = signToken(payload);
-    audit(
+    await audit(
       payload,
       created ? "create" : "login",
       "user",

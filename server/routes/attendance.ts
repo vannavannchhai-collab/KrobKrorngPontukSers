@@ -14,7 +14,7 @@ router.get(
     const classId = Number(req.query.class_id);
     const date = String(req.query.date ?? todayISO());
     if (!classId) throw new HttpError(400, "សូមជ្រើសរើសថ្នាក់");
-    const students = db
+    const students = await db
       .prepare(
         `SELECT id, code, last_name_kh, first_name_kh, gender,
                 (last_name_kh || ' ' || first_name_kh) AS name_kh
@@ -22,7 +22,7 @@ router.get(
           ORDER BY last_name_kh, first_name_kh`,
       )
       .all(classId) as any[];
-    const records = db
+    const records = await db
       .prepare("SELECT student_id, status, note FROM attendance WHERE class_id = ? AND date = ?")
       .all(classId, date) as any[];
     const map: Record<number, { status: string; note: string | null }> = {};
@@ -49,9 +49,9 @@ router.put(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpError(400, "កាលបរិច្ឆេទមិនត្រឹមត្រូវ");
 
     const validStudents = new Set(
-      (db.prepare("SELECT id FROM students WHERE class_id = ?").all(classId) as any[]).map((r) => r.id),
+      (await db.prepare("SELECT id FROM students WHERE class_id = ?").all(classId) as any[]).map((r) => r.id),
     );
-    const upsert = db.prepare(
+    const upsert = await db.prepare(
       `INSERT INTO attendance (student_id, class_id, date, status, note, recorded_by, updated_at)
        VALUES (?,?,?,?,?,?,datetime('now'))
        ON CONFLICT(student_id, date) DO UPDATE SET
@@ -59,7 +59,7 @@ router.put(
          recorded_by = excluded.recorded_by, updated_at = datetime('now')`,
     );
     let saved = 0;
-    db.exec("BEGIN");
+    await db.exec("BEGIN");
     try {
       for (const e of entries) {
         const studentId = Number(e.student_id);
@@ -68,13 +68,13 @@ router.put(
         upsert.run(studentId, classId, date, e.status, e.note ?? null, req.user!.id);
         saved++;
       }
-      db.exec("COMMIT");
+      await db.exec("COMMIT");
     } catch (err) {
-      db.exec("ROLLBACK");
+      await db.exec("ROLLBACK");
       throw err;
     }
-    const cls = db.prepare("SELECT name FROM classes WHERE id = ?").get(classId) as any;
-    audit(req.user, "update", "attendance", classId, `កត់ត្រាវត្តមាន ${cls?.name ?? ""} ថ្ងៃ ${date}`, req.ip);
+    const cls = await db.prepare("SELECT name FROM classes WHERE id = ?").get(classId) as any;
+    await audit(req.user, "update", "attendance", classId, `កត់ត្រាវត្តមាន ${cls?.name ?? ""} ថ្ងៃ ${date}`, req.ip);
     res.json({ ok: true, saved });
   }),
 );
@@ -94,7 +94,7 @@ router.get(
         return dow !== 0 && dow !== 6;
       },
     );
-    const students = db
+    const students = await db
       .prepare(
         `SELECT id, code, last_name_kh, first_name_kh, gender,
                 (last_name_kh || ' ' || first_name_kh) AS name_kh
@@ -102,7 +102,7 @@ router.get(
           ORDER BY last_name_kh, first_name_kh`,
       )
       .all(classId) as any[];
-    const records = db
+    const records = await db
       .prepare(
         "SELECT student_id, date, status, note FROM attendance WHERE class_id = ? AND date LIKE ?",
       )
@@ -135,13 +135,13 @@ router.get(
     const classId = Number(req.query.class_id);
     const month = String(req.query.month ?? todayISO().slice(0, 7));
     if (!classId) throw new HttpError(400, "សូមជ្រើសរើសថ្នាក់");
-    const students = db
+    const students = await db
       .prepare(
         `SELECT id, code, (last_name_kh || ' ' || first_name_kh) AS name_kh
            FROM students WHERE class_id = ? AND status='active' ORDER BY last_name_kh`,
       )
       .all(classId) as any[];
-    const rows = db
+    const rows = await db
       .prepare(
         `SELECT student_id,
                 SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) present,

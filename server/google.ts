@@ -49,7 +49,7 @@ export function decryptSecret(payload: string): string {
   }
 }
 
-export function getGoogleConfig(): GoogleConfig {
+export async function getGoogleConfig(): Promise<GoogleConfig> {
   const envId = (process.env.GOOGLE_CLIENT_ID ?? "").trim();
   const envSecret = (process.env.GOOGLE_CLIENT_SECRET ?? "").trim();
   const redirectUri = (process.env.GOOGLE_REDIRECT_URI ?? "").trim();
@@ -58,7 +58,7 @@ export function getGoogleConfig(): GoogleConfig {
     return { clientId: envId, clientSecret: envSecret, redirectUri, enabled: true, source: "env" };
   }
 
-  const settings = getSettings();
+  const settings = await getSettings();
   const storedId = (settings.google_client_id ?? "").trim();
   const storedSecret = decryptSecret(settings.google_client_secret_enc ?? "");
   const storedRedirect = (settings.google_redirect_uri ?? "").trim();
@@ -78,7 +78,7 @@ export function getGoogleConfig(): GoogleConfig {
 export class GoogleConfigError extends Error {}
 
 /** Save credentials entered by an administrator (empty secret keeps the previous one). */
-export function saveGoogleConfig(input: {
+export async function saveGoogleConfig(input: {
   clientId: string;
   clientSecret: string;
   redirectUri?: string;
@@ -97,7 +97,8 @@ export function saveGoogleConfig(input: {
     throw new GoogleConfigError("Client Secret ខ្លីពេក — សូមចម្លងមកពី Google Cloud Console ទាំងស្រុង");
   }
   if (!clientSecret) {
-    const current = decryptSecret(getSettings().google_client_secret_enc ?? "");
+    const settings = await getSettings();
+    const current = decryptSecret(settings.google_client_secret_enc ?? "");
     if (!current) throw new GoogleConfigError("សូមបញ្ចូល Client Secret ផងដែរ");
   }
 
@@ -110,15 +111,15 @@ export function saveGoogleConfig(input: {
     }
   }
 
-  setSetting("google_client_id", clientId);
-  if (clientSecret) setSetting("google_client_secret_enc", encryptSecret(clientSecret));
-  setSetting("google_redirect_uri", redirectUri);
+  await setSetting("google_client_id", clientId);
+  if (clientSecret) await setSetting("google_client_secret_enc", encryptSecret(clientSecret));
+  await setSetting("google_redirect_uri", redirectUri);
 }
 
-export function clearGoogleConfig() {
-  setSetting("google_client_id", "");
-  setSetting("google_client_secret_enc", "");
-  setSetting("google_redirect_uri", "");
+export async function clearGoogleConfig() {
+  await setSetting("google_client_id", "");
+  await setSetting("google_client_secret_enc", "");
+  await setSetting("google_redirect_uri", "");
 }
 
 export function maskClientId(clientId: string): string {
@@ -141,6 +142,7 @@ export function publicBaseUrl(req: Request): string {
   return `${proto}://${host}`;
 }
 
-export function redirectUriFor(req: Request): string {
-  return getGoogleConfig().redirectUri || `${publicBaseUrl(req)}/api/auth/google/callback`;
+export async function redirectUriFor(req: Request): Promise<string> {
+  const cfg = await getGoogleConfig();
+  return cfg.redirectUri || `${publicBaseUrl(req)}/api/auth/google/callback`;
 }

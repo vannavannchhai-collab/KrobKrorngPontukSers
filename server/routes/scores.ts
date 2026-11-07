@@ -13,10 +13,10 @@ router.get(
   asyncHandler(async (req, res) => {
     const classId = Number(req.query.class_id);
     const subjectId = Number(req.query.subject_id);
-    const termId = Number(req.query.term_id) || currentTermId();
+    const termId = Number(req.query.term_id) || (await currentTermId());
     if (!classId || !subjectId || !termId) throw new HttpError(400, "សូមជ្រើសរើសថ្នាក់ មុខវិជ្ជា និងឆមាស");
 
-    const students = db
+    const students = await db
       .prepare(
         `SELECT id, code, last_name_kh, first_name_kh, gender,
                 (last_name_kh || ' ' || first_name_kh) AS name_kh
@@ -25,8 +25,8 @@ router.get(
       )
       .all(classId) as any[];
 
-    const scoreTypes = getScoreTypes();
-    const rows = db
+    const scoreTypes = await getScoreTypes();
+    const rows = await db
       .prepare(
         `SELECT sc.student_id, st.code AS type_code, sc.score, sc.updated_at
            FROM scores sc JOIN score_types st ON st.id = sc.score_type_id
@@ -42,10 +42,10 @@ router.get(
       updatedAt.set(`${r.student_id}|${r.type_code}`, r.updated_at);
     }
 
-    const subject = db.prepare("SELECT * FROM subjects WHERE id = ?").get(subjectId) as any;
-    const cls = db.prepare("SELECT * FROM classes WHERE id = ?").get(classId) as any;
-    const term = db.prepare("SELECT * FROM terms WHERE id = ?").get(termId) as any;
-    const assignment = db
+    const subject = await db.prepare("SELECT * FROM subjects WHERE id = ?").get(subjectId) as any;
+    const cls = await db.prepare("SELECT * FROM classes WHERE id = ?").get(classId) as any;
+    const term = await db.prepare("SELECT * FROM terms WHERE id = ?").get(termId) as any;
+    const assignment = await db
       .prepare(
         `SELECT t.name AS teacher_name FROM class_subjects cs
            LEFT JOIN users t ON t.id = cs.teacher_id WHERE cs.class_id = ? AND cs.subject_id = ?`,
@@ -68,7 +68,7 @@ router.get(
       term,
       teacherName: assignment?.teacher_name ?? null,
       lastUpdate,
-      maxScore: Number(getSettings().max_score ?? 100),
+      maxScore: Number((await getSettings()).max_score ?? 100),
     });
   }),
 );
@@ -82,31 +82,31 @@ router.put(
     const subjectId = Number(subject_id);
     const termId = Number(term_id);
     if (!classId || !subjectId || !termId) throw new HttpError(400, "ព័ត៌មានមិនគ្រប់គ្រាន់");
-    if (!canEditSubject(classId, subjectId, req.user!)) {
+    if (!(await canEditSubject(classId, subjectId, req.user!))) {
       throw new HttpError(403, "អ្នកគ្មានសិទ្ធិបញ្ចូលពិន្ទុមុខវិជ្ជានេះទេ");
     }
     if (!Array.isArray(entries) || entries.length === 0) throw new HttpError(400, "គ្មានពិន្ទុត្រូវរក្សាទុក");
-    const maxScore = Number(getSettings().max_score ?? 100);
+    const maxScore = Number((await getSettings()).max_score ?? 100);
 
     const scoreTypeIds = new Set(
-      (db.prepare("SELECT id FROM score_types").all() as any[]).map((r) => r.id),
+      (await db.prepare("SELECT id FROM score_types").all() as any[]).map((r) => r.id),
     );
     const studentIds = new Set(
-      (db.prepare("SELECT id FROM students WHERE class_id = ?").all(classId) as any[]).map((r) => r.id),
+      (await db.prepare("SELECT id FROM students WHERE class_id = ?").all(classId) as any[]).map((r) => r.id),
     );
 
-    const upsert = db.prepare(
+    const upsert = await db.prepare(
       `INSERT INTO scores (student_id, subject_id, term_id, score_type_id, score, entered_by, updated_at)
        VALUES (?,?,?,?,?,?,datetime('now'))
        ON CONFLICT(student_id, subject_id, term_id, score_type_id)
        DO UPDATE SET score = excluded.score, entered_by = excluded.entered_by, updated_at = datetime('now')`,
     );
-    const remove = db.prepare(
+    const remove = await db.prepare(
       "DELETE FROM scores WHERE student_id = ? AND subject_id = ? AND term_id = ? AND score_type_id = ?",
     );
 
     let saved = 0;
-    db.exec("BEGIN");
+    await db.exec("BEGIN");
     try {
       for (const e of entries) {
         const studentId = Number(e.student_id);
@@ -124,15 +124,15 @@ router.put(
         upsert.run(studentId, subjectId, termId, typeId, value, req.user!.id);
         saved++;
       }
-      db.exec("COMMIT");
+      await db.exec("COMMIT");
     } catch (err) {
-      db.exec("ROLLBACK");
+      await db.exec("ROLLBACK");
       throw err;
     }
 
-    const cls = db.prepare("SELECT name FROM classes WHERE id = ?").get(classId) as any;
-    const sub = db.prepare("SELECT name_kh FROM subjects WHERE id = ?").get(subjectId) as any;
-    audit(
+    const cls = await db.prepare("SELECT name FROM classes WHERE id = ?").get(classId) as any;
+    const sub = await db.prepare("SELECT name_kh FROM subjects WHERE id = ?").get(subjectId) as any;
+    await audit(
       req.user,
       "update",
       "score",
@@ -149,7 +149,7 @@ router.get(
   "/student/:id",
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    const rows = db
+    const rows = await db
       .prepare(
         `SELECT sc.*, st.code AS type_code, st.name_kh AS type_name, st.weight,
                 s.name_kh AS subject_name, t.name AS term_name, t.id AS term_id
@@ -169,7 +169,7 @@ router.get(
   "/my-assignments",
   asyncHandler(async (req, res) => {
     if (req.user!.role === "admin") {
-      const rows = db
+      const rows = await db
         .prepare(
           `SELECT cs.class_id, c.name AS class_name, cs.subject_id, s.name_kh AS subject_name
              FROM class_subjects cs JOIN classes c ON c.id = cs.class_id
@@ -179,7 +179,7 @@ router.get(
         .all();
       return res.json({ data: rows });
     }
-    const rows = db
+    const rows = await db
       .prepare(
         `SELECT cs.class_id, c.name AS class_name, cs.subject_id, s.name_kh AS subject_name
            FROM class_subjects cs JOIN classes c ON c.id = cs.class_id

@@ -44,7 +44,7 @@ router.post(
       throw new HttpError(429, "ព្យាយាមចូលច្រើនដងពេក សូមរង់ចាំ ១០ នាទី ហើយព្យាយាមម្ដងទៀត");
     }
 
-    const user = db
+    const user = await db
       .prepare("SELECT * FROM users WHERE lower(username) = ? OR lower(email) = ? LIMIT 1")
       .get(username, username) as
       | {
@@ -65,7 +65,7 @@ router.post(
     attempts.delete(attemptKey);
     if (!user.is_active) throw new HttpError(403, "គណនីនេះត្រូវបានបិទ សូមទាក់ទងអ្នកគ្រប់គ្រង");
 
-    db.prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?").run(user.id);
+    await db.prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?").run(user.id);
     const payload: AuthUser = {
       id: user.id,
       username: user.username,
@@ -73,7 +73,7 @@ router.post(
       role: user.role,
       subject_id: user.subject_id,
     };
-    audit(payload, "login", "user", user.id, `${user.name} បានចូលប្រើប្រាស់`, req.ip);
+    await audit(payload, "login", "user", user.id, `${user.name} បានចូលប្រើប្រាស់`, req.ip);
     res.json({ token: signToken(payload), user: { ...payload, email: (user as any).email ?? null } });
   }),
 );
@@ -87,8 +87,8 @@ const GMAIL_RE = /^[a-z0-9](?:[a-z0-9._%+-]{1,62})@(?:gmail\.com|googlemail\.com
  * in «គ្រូបង្រៀន». The only exception is the very first account (the owner), which
  * has to be created before anybody can sign in.
  */
-router.get("/registration-status", (_req, res) => {
-  const total = (db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
+router.get("/registration-status", async (_req, res) => {
+  const total = (await db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
   res.json({
     has_users: total > 0,
     allow_registration: false,
@@ -110,7 +110,7 @@ router.post(
     }
     if (password.length < 8) throw new HttpError(400, "លេខសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ");
 
-    const total = (db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
+    const total = (await db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number }).c;
     if (total > 0) {
       throw new HttpError(
         403,
@@ -118,13 +118,13 @@ router.post(
       );
     }
 
-    const existing = db
+    const existing = await db
       .prepare("SELECT 1 FROM users WHERE lower(email) = ? OR lower(username) = ?")
       .get(email, email);
     if (existing) throw new HttpError(409, "អ៊ីមែលនេះបានចុះឈ្មោះរួចហើយ សូមចូលប្រើជំនួសវិញ");
 
     const role: "admin" | "teacher" = "admin"; // owner bootstrap only
-    const info = db
+    const info = await db
       .prepare(
         `INSERT INTO users (username, password_hash, name, role, email, is_active)
          VALUES (?,?,?,?,?,1)`,
@@ -133,7 +133,7 @@ router.post(
     const userId = Number(info.lastInsertRowid);
 
     const payload: AuthUser = { id: userId, username: email, name, role, subject_id: null };
-    audit(payload, "create", "user", userId, `បង្កើតគណនីម្ចាស់ប្រព័ន្ធ: ${email}`, req.ip);
+    await audit(payload, "create", "user", userId, `បង្កើតគណនីម្ចាស់ប្រព័ន្ធ: ${email}`, req.ip);
     res.status(201).json({
       token: signToken(payload),
       user: { ...payload, email },
@@ -142,8 +142,8 @@ router.post(
   }),
 );
 
-router.get("/me", authRequired, (req, res) => {
-  const row = db.prepare("SELECT email FROM users WHERE id = ?").get(req.user!.id) as
+router.get("/me", authRequired, async (req, res) => {
+  const row = await db.prepare("SELECT email FROM users WHERE id = ?").get(req.user!.id) as
     | { email: string | null }
     | undefined;
   res.json({ user: { ...req.user, email: row?.email ?? null } });
@@ -156,12 +156,12 @@ router.post(
     const current = String(req.body?.current_password ?? "");
     const next = String(req.body?.new_password ?? "");
     if (next.length < 6) throw new HttpError(400, "លេខសម្ងាត់ថ្មីត្រូវមានយ៉ាងតិច ៦ តួអក្សរ");
-    const me = db.prepare("SELECT * FROM users WHERE id = ?").get(req.user!.id) as {
+    const me = await db.prepare("SELECT * FROM users WHERE id = ?").get(req.user!.id) as {
       password_hash: string;
     };
     if (!verifyPassword(current, me.password_hash)) throw new HttpError(400, "លេខសម្ងាត់បច្ចុប្បន្នមិនត្រឹមត្រូវ");
-    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hashPassword(next), req.user!.id);
-    audit(req.user, "update", "user", req.user!.id, "បានផ្លាស់ប្ដូរលេខសម្ងាត់", req.ip);
+    await db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hashPassword(next), req.user!.id);
+    await audit(req.user, "update", "user", req.user!.id, "បានផ្លាស់ប្ដូរលេខសម្ងាត់", req.ip);
     res.json({ ok: true });
   }),
 );
@@ -171,7 +171,7 @@ router.get(
   authRequired,
   adminOnly,
   asyncHandler(async (_req, res) => {
-    const rows = db
+    const rows = await db
       .prepare(
         `SELECT u.id, u.username, u.name, u.name_en, u.role, u.email, u.phone, u.gender,
                 u.subject_id, s.name_kh AS subject_name, u.hire_date, u.is_active, u.last_login_at, u.created_at
